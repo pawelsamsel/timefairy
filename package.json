@@ -10,7 +10,9 @@
     "db:seed": "pnpm --filter @timefairy/api exec prisma db seed",
     "db:generate": "pnpm --filter @timefairy/api exec prisma generate",
     "docker:up": "BUILDX_BUILDER=default docker compose up --build -d",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "deploy:pack": "bash scripts/deploy-pack.sh",
+    "deploy:push": "bash scripts/deploy-push.sh"
   },
   "devDependencies": {
     "turbo": "^2.5.4",

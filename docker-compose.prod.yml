@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-timefairy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-timefairy}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-timefairy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: timefairy-api:${TIMEFAIRY_VERSION:?set TIMEFAIRY_VERSION}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-timefairy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-timefairy}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
+      API_PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    image: timefairy-web:${TIMEFAIRY_VERSION:?set TIMEFAIRY_VERSION}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - default
+      - traefik
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik
+      - traefik.http.routers.timefairy.rule=Host(`${TIMEFAIRY_DOMAIN:?set TIMEFAIRY_DOMAIN}`)
+      - traefik.http.routers.timefairy.entrypoints=websecure
+      - traefik.http.routers.timefairy.tls=true
+      - traefik.http.routers.timefairy.tls.certresolver=${TRAEFIK_CERT_RESOLVER:-letsencrypt}
+      - traefik.http.services.timefairy.loadbalancer.server.port=80
+
+networks:
+  traefik:
+    external: true
+
+volumes:
+  pgdata:

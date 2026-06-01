@@ -8,7 +8,7 @@ Time tracking monorepo: NestJS API, Vite admin/user web, Rust CLI, Expo mobile (
 - **Web:** Vite + React + TanStack Query
 - **CLI:** Rust (clap + ratatui)
 - **Dev env:** [Devbox](https://www.jetify.com/devbox)
-- **Deploy:** Docker Compose (postgres + api + web)
+- **Deploy:** Docker Compose (postgres + api + web) — see [docs/deployment.md](docs/deployment.md) for remote deploy with Traefik
 
 ## Quick start (Devbox)
 
