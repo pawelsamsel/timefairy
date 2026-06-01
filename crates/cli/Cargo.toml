@@ -1,0 +1,17 @@
+[package]
+name = "timefairy-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "timefairy"
+path = "src/main.rs"
+
+[dependencies]
+timefairy-core = { path = "../core" }
+clap.workspace = true
+anyhow.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+dialoguer.workspace = true

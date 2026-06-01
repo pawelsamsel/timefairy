@@ -1,0 +1,9 @@
+{
+  "name": "@timefairy/mobile",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Expo scaffold - run: npx create-expo-app to bootstrap'",
+    "build": "echo 'mobile scaffold'"
+  }
+}

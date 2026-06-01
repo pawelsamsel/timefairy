@@ -1,0 +1,2 @@
+ALTER TABLE "Task" ADD COLUMN "externalId" TEXT;
+ALTER TABLE "Task" ADD COLUMN "externalUrl" TEXT;

@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum LaneType {
+  LOGGED
+  PLANNED
+  EVENTS
+  CUSTOM
+}
+
+enum EntrySource {
+  WEB
+  CLI
+  MOBILE
+  DESKTOP
+  AI
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(USER)
+  timezone     String   @default("UTC")
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  clients       Client[]
+  projects      Project[]
+  tasks         Task[]
+  lanes         Lane[]
+  timeEntries   TimeEntry[]
+  events        Event[]
+  plannedBlocks PlannedBlock[]
+}
+
+model SystemSettings {
+  id                  Int     @id @default(1)
+  registrationEnabled Boolean @default(true)
+}
+
+model Client {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  projects    Project[]
+  tasks       Task[]
+  timeEntries TimeEntry[]
+
+  @@index([userId])
+}
+
+model Project {
+  id         String   @id @default(uuid())
+  userId     String
+  clientId   String
+  name       String
+  color      String   @default("#00509d")
+  hourlyRate Decimal  @db.Decimal(10, 2)
+  currency   String   @db.VarChar(3)
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  client        Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks         Task[]
+  timeEntries   TimeEntry[]
+  plannedBlocks PlannedBlock[]
+
+  @@index([userId])
+  @@index([clientId])
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  userId      String
+  projectId   String
+  clientId    String?
+  title       String
+  externalId  String?
+  externalUrl String?
+  status      TaskStatus @default(TODO)
+  note        String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  client        Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  timeEntries   TimeEntry[]
+  plannedBlocks PlannedBlock[]
+
+  @@index([userId])
+  @@index([projectId])
+}
+
+model Lane {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  type      LaneType
+  isDefault Boolean  @default(false)
+  color     String   @default("#00509d")
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  timeEntries   TimeEntry[]
+  events        Event[]
+  plannedBlocks PlannedBlock[]
+
+  @@index([userId])
+}
+
+model TimeEntry {
+  id              String      @id @default(uuid())
+  userId          String
+  laneId          String
+  taskId          String?
+  projectId       String?
+  clientId        String?
+  startAt         DateTime?
+  endAt           DateTime?
+  durationMinutes Int?
+  title           String?
+  note            String?
+  source          EntrySource @default(WEB)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lane    Lane     @relation(fields: [laneId], references: [id], onDelete: Cascade)
+  task    Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  client  Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([laneId])
+  @@index([startAt])
+}
+
+model Event {
+  id          String    @id @default(uuid())
+  userId      String
+  laneId      String?
+  title       String
+  startAt     DateTime
+  endAt       DateTime?
+  isAllDay    Boolean   @default(false)
+  isMomentary Boolean   @default(false)
+  note        String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lane Lane? @relation(fields: [laneId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([startAt])
+}
+
+model PlannedBlock {
+  id        String   @id @default(uuid())
+  userId    String
+  laneId    String
+  taskId    String?
+  projectId String?
+  startAt   DateTime
+  endAt     DateTime
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lane    Lane     @relation(fields: [laneId], references: [id], onDelete: Cascade)
+  task    Task?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([startAt])
+}

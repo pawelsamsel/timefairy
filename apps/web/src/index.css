@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-imperial-blue: #00296b;
+  --color-imperial-blue-50: #e8eef4;
+  --color-imperial-blue-100: #d1dde9;
+  --color-imperial-blue-200: #a3bbd3;
+  --color-imperial-blue-800: #00315f;
+  --color-imperial-blue-900: #00296b;
+  --color-imperial-blue-950: #001a42;
+
+  --color-french-blue: #003f88;
+  --color-french-blue-50: #e7eff8;
+  --color-french-blue-100: #cfdff1;
+  --color-french-blue-200: #9fbfe3;
+  --color-french-blue-700: #002f66;
+
+  --color-steel-azure: #00509d;
+  --color-steel-azure-50: #e8f2fa;
+  --color-steel-azure-100: #d1e5f5;
+  --color-steel-azure-200: #a3cbeb;
+  --color-steel-azure-600: #004080;
+  --color-steel-azure-700: #00356a;
+
+  --color-school-bus-yellow: #fdc500;
+  --color-school-bus-yellow-50: #fff9e6;
+  --color-school-bus-yellow-100: #fff3cc;
+  --color-school-bus-yellow-foreground: #00296b;
+
+  --color-gold: #ffd500;
+  --color-gold-50: #fffce8;
+  --color-gold-100: #fff9d1;
+  --color-gold-foreground: #00296b;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+
+  --background: var(--color-imperial-blue-50);
+  --foreground: var(--color-imperial-blue);
+  --card: #ffffff;
+  --card-foreground: var(--color-imperial-blue);
+  --popover: #ffffff;
+  --popover-foreground: var(--color-imperial-blue);
+  --primary: var(--color-steel-azure);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-french-blue-100);
+  --secondary-foreground: var(--color-french-blue);
+  --muted: var(--color-steel-azure-50);
+  --muted-foreground: var(--color-french-blue);
+  --accent: var(--color-school-bus-yellow);
+  --accent-foreground: var(--color-imperial-blue);
+  --destructive: #c53030;
+  --destructive-foreground: #ffffff;
+  --border: color-mix(in srgb, var(--color-imperial-blue-200) 55%, transparent);
+  --input: color-mix(in srgb, var(--color-imperial-blue-100) 70%, transparent);
+  --ring: var(--color-french-blue);
+}
+
+.dark {
+  --background: var(--color-imperial-blue);
+  --foreground: var(--color-imperial-blue-50);
+  --card: var(--color-french-blue);
+  --card-foreground: var(--color-imperial-blue-50);
+  --popover: var(--color-french-blue);
+  --popover-foreground: var(--color-imperial-blue-50);
+  --primary: var(--color-gold);
+  --primary-foreground: var(--color-imperial-blue);
+  --secondary: var(--color-imperial-blue-800);
+  --secondary-foreground: var(--color-imperial-blue-50);
+  --muted: var(--color-imperial-blue-800);
+  --muted-foreground: var(--color-steel-azure-200);
+  --accent: var(--color-steel-azure);
+  --accent-foreground: #ffffff;
+  --destructive: #e53e3e;
+  --destructive-foreground: #ffffff;
+  --border: var(--color-french-blue);
+  --input: var(--color-french-blue);
+  --ring: var(--color-gold);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground min-h-screen antialiased;
+  }
+}
+
+@layer components {
+  .native-picker-input {
+    min-height: 2.5rem;
+    color-scheme: light;
+  }
+  .dark .native-picker-input {
+    color-scheme: dark;
+  }
+  .native-picker-input::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.7;
+  }
+  .native-picker-input::-webkit-calendar-picker-indicator:hover {
+    opacity: 1;
+  }
+
+  .card {
+    @apply rounded-md bg-card text-card-foreground shadow-sm p-4;
+  }
+  .btn-primary {
+    @apply inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50;
+  }
+  .btn-danger {
+    @apply inline-flex h-9 items-center justify-center rounded-md border border-destructive/50 bg-destructive/10 px-4 text-sm text-destructive hover:bg-destructive/20;
+  }
+
+  .dialog-surface label {
+    @apply text-imperial-blue font-medium;
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://raw.githubusercontent.com/jetify-com/devbox/main/.schema/devbox.schema.json",
+  "packages": [
+    "nodejs@22",
+    "postgresql@16",
+    "process-compose@latest",
+    "rustup@latest"
+  ],
+  "env": {
+    "DATABASE_URL": "postgresql://timefairy:timefairy@localhost:5432/timefairy?schema=public",
+    "JWT_SECRET": "dev-jwt-secret-change-in-production",
+    "JWT_REFRESH_SECRET": "dev-refresh-secret-change-in-production",
+    "API_PORT": "3000"
+  },
+  "shell": {
+    "init_hook": [
+      "unset NPM_CONFIG_PREFIX NODE_PATH 2>/dev/null || true",
+      "unset -f nvm node npm npx 2>/dev/null || true",
+      "unalias node npm npx 2>/dev/null || true",
+      "export PATH=\"${DEVBOX_PROJECT_ROOT}/.devbox/nix/profile/default/bin:${DEVBOX_PROJECT_ROOT}/.devbox/tools/bin:${PATH}\"",
+      "hash -r 2>/dev/null || true",
+      "rehash 2>/dev/null || true",
+      "mkdir -p \"${DEVBOX_PROJECT_ROOT}/.devbox/tools/bin\"",
+      "if [ ! -x \"${DEVBOX_PROJECT_ROOT}/.devbox/tools/bin/pnpm\" ]; then npm install -g pnpm@10.12.1 --prefix \"${DEVBOX_PROJECT_ROOT}/.devbox/tools\"; fi",
+      "echo \"Timefairy ready — Node $(node -v) | pnpm $(pnpm -v)\""
+    ],
+    "scripts": {
+      "dev": "pnpm dev",
+      "db:migrate": "pnpm db:migrate",
+      "db:seed": "pnpm db:seed",
+      "cli": "cargo run -p timefairy-cli --manifest-path Cargo.toml",
+      "cli:build": "cargo build -p timefairy-cli --release --manifest-path Cargo.toml",
+      "cli:install": "cargo install --path crates/cli --force --manifest-path Cargo.toml",
+      "docker:up": "docker compose up --build -d",
+      "docker:down": "docker compose down"
+    }
+  }
+}

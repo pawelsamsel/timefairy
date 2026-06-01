@@ -1,0 +1,33 @@
+{
+  "name": "timefairy",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "db:setup": "bash scripts/setup-local-postgres.sh",
+    "db:migrate": "pnpm --filter @timefairy/api exec prisma migrate dev",
+    "db:seed": "pnpm --filter @timefairy/api exec prisma db seed",
+    "db:generate": "pnpm --filter @timefairy/api exec prisma generate",
+    "docker:up": "BUILDX_BUILDER=default docker compose up --build -d",
+    "docker:down": "docker compose down"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "pnpm@10.12.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "bcrypt",
+      "esbuild",
+      "prisma"
+    ]
+  }
+}

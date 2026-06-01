@@ -1,0 +1,9 @@
+version: "0.5"
+
+processes:
+  postgres:
+    command: postgres -D ${DEVBOX_PROJECT_ROOT}/.devbox/postgres-data -p 5432 -k /tmp
+    availability:
+      restart: on_failure
+    environment:
+      - "PGDATA=${DEVBOX_PROJECT_ROOT}/.devbox/postgres-data"

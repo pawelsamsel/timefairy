@@ -1,0 +1,9 @@
+{
+  "name": "@timefairy/desktop",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Tauri scaffold - run: npm create tauri-app@latest'",
+    "build": "echo 'desktop scaffold'"
+  }
+}
