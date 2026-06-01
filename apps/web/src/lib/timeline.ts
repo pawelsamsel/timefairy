@@ -292,6 +292,22 @@ export function clientYToTimelineMinute(
 }
 
 export const TIMELINE_DROP_HOLD_MS = 600;
+export const TIMELINE_FREE_SLOT_HOVER_MS = 450;
+export const MOMENT_ENTRY_POINTER_EXCLUSION_MINUTES = 8;
+
+export function momentEntryStartMinute(startAt: string | null): number | null {
+  if (!startAt) return null;
+  const start = new Date(startAt);
+  return start.getHours() * 60 + start.getMinutes();
+}
+
+export function isMinuteNearMomentEntries(
+  minute: number,
+  momentStartMinutes: number[],
+  radiusMinutes = MOMENT_ENTRY_POINTER_EXCLUSION_MINUTES,
+): boolean {
+  return momentStartMinutes.some((m) => Math.abs(minute - m) <= radiusMinutes);
+}
 
 export function timelineTotalHeightPx(): number {
   return (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * TIMELINE_HOUR_HEIGHT_PX;

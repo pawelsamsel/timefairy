@@ -23,7 +23,7 @@ export function FreeSlotAddOverlay({ slot, onSelect, onDismiss }: FreeSlotAddOve
   return (
     <div
       data-free-slot-overlay
-      className="group/free-slot absolute left-1 right-2 z-15"
+      className="group/free-slot absolute left-1 right-2 z-[12]"
       style={{
         top: minutesToTopPx(slot.startMinutes),
         height: heightPx,

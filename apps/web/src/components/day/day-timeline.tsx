@@ -17,13 +17,16 @@ import {
   formatMinuteRangeLabel,
   formatSlotLabel,
   getExpandedDropOptions,
+  isMinuteNearMomentEntries,
   layoutTimedEntryBlocks,
   minutesToHeightPx,
   minutesToTopPx,
+  momentEntryStartMinute,
   timedEntryColumnStyle,
   type TimedEntryBlockLayout,
   slotKey,
   TIMELINE_DROP_HOLD_MS,
+  TIMELINE_FREE_SLOT_HOVER_MS,
   TIMELINE_DEFAULT_SCROLL_HOUR,
   TIMELINE_END_HOUR,
   TIMELINE_HOUR_HEIGHT_PX,
@@ -81,6 +84,8 @@ export function DayTimeline({
   const gridRef = useRef<HTMLDivElement>(null);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdHourRef = useRef<number | null>(null);
+  const freeSlotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingFreeSlotKeyRef = useRef<string | null>(null);
 
   const [highlightSlot, setHighlightSlot] = useState<TimelineDropSlot | null>(null);
   const [hoverFreeSlot, setHoverFreeSlot] = useState<TimelineDropSlot | null>(null);
@@ -103,6 +108,13 @@ export function DayTimeline({
   );
   const occupiedRanges = entriesToOccupiedRanges(timedEntries);
   const entryLayouts = useMemo(() => layoutTimedEntryBlocks(timedEntries), [timedEntries]);
+  const momentStartMinutes = useMemo(
+    () =>
+      momentEntries
+        .map((entry) => momentEntryStartMinute(entry.startAt))
+        .filter((minute): minute is number => minute !== null),
+    [momentEntries],
+  );
 
   const now = new Date();
   const [y, m, d] = dateStr.split("-").map(Number);
@@ -121,13 +133,29 @@ export function DayTimeline({
     );
   }, [dateStr]);
 
-  useEffect(() => () => clearHoldTimer(), []);
+  useEffect(() => () => {
+    clearHoldTimer();
+    clearFreeSlotTimer();
+  }, []);
 
   function clearHoldTimer() {
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current);
       holdTimerRef.current = null;
     }
+  }
+
+  function clearFreeSlotTimer() {
+    if (freeSlotTimerRef.current) {
+      clearTimeout(freeSlotTimerRef.current);
+      freeSlotTimerRef.current = null;
+    }
+    pendingFreeSlotKeyRef.current = null;
+  }
+
+  function dismissFreeSlotOverlay() {
+    clearFreeSlotTimer();
+    setHoverFreeSlot(null);
   }
 
   function resetDropUi() {
@@ -165,41 +193,65 @@ export function DayTimeline({
     if (!isDraggingTask) {
       resetDropUi();
     } else {
-      setHoverFreeSlot(null);
+      dismissFreeSlotOverlay();
     }
   }, [isDraggingTask]);
 
   useEffect(() => {
     if (schedulePreview) {
-      setHoverFreeSlot(null);
+      dismissFreeSlotOverlay();
     }
   }, [schedulePreview]);
 
   const handleGridPointerMove = useCallback(
     (e: React.PointerEvent) => {
       if (isDraggingTask || schedulePreview) {
-        setHoverFreeSlot(null);
+        dismissFreeSlotOverlay();
         return;
       }
 
-      if ((e.target as HTMLElement).closest("[data-free-slot-overlay]")) {
+      const target = e.target as HTMLElement;
+      if (target.closest("[data-free-slot-overlay]") || target.closest("[data-moment-entry]")) {
         return;
       }
 
       const minute = minuteFromClientY(e.clientY);
       if (minute === null) {
-        setHoverFreeSlot(null);
+        dismissFreeSlotOverlay();
+        return;
+      }
+
+      if (isMinuteNearMomentEntries(minute, momentStartMinutes)) {
+        dismissFreeSlotOverlay();
         return;
       }
 
       const segment = findFreeSegmentContainingMinute(minute, occupiedRanges);
-      setHoverFreeSlot((prev) => {
-        if (!segment) return null;
-        if (prev && slotKey(prev) === slotKey(segment)) return prev;
-        return segment;
-      });
+      if (!segment) {
+        dismissFreeSlotOverlay();
+        return;
+      }
+
+      const key = slotKey(segment);
+      if (hoverFreeSlot && slotKey(hoverFreeSlot) === key) return;
+      if (pendingFreeSlotKeyRef.current === key) return;
+
+      clearFreeSlotTimer();
+      pendingFreeSlotKeyRef.current = key;
+      freeSlotTimerRef.current = setTimeout(() => {
+        setHoverFreeSlot(segment);
+        pendingFreeSlotKeyRef.current = null;
+        freeSlotTimerRef.current = null;
+      }, TIMELINE_FREE_SLOT_HOVER_MS);
     },
-    [isDraggingTask, minuteFromClientY, occupiedRanges, schedulePreview],
+    [
+      hoverFreeSlot,
+      isDraggingTask,
+      minuteFromClientY,
+      momentStartMinutes,
+      occupiedRanges,
+      schedulePreview,
+    ],
   );
 
   function scheduleExpand(hour: number) {
@@ -314,7 +366,7 @@ export function DayTimeline({
               className="relative ml-14"
               style={{ height: timelineTotalHeightPx() }}
               onPointerMove={handleGridPointerMove}
-              onPointerLeave={() => setHoverFreeSlot(null)}
+              onPointerLeave={dismissFreeSlotOverlay}
               onDragLeave={(e) => {
               const next = e.relatedTarget as Node | null;
               if (next && e.currentTarget.contains(next)) return;
@@ -390,6 +442,17 @@ export function DayTimeline({
               </div>
             )}
 
+            {hoverFreeSlot && !isDraggingTask && !schedulePreview && (
+              <FreeSlotAddOverlay
+                slot={hoverFreeSlot}
+                onDismiss={dismissFreeSlotOverlay}
+                onSelect={(slot, durationMinutes) => {
+                  dismissFreeSlotOverlay();
+                  onFreeSlotClick(slot, durationMinutes);
+                }}
+              />
+            )}
+
             {momentEntries.map((entry) => (
               <MomentEntryMarker
                 key={entry.id}
@@ -398,6 +461,7 @@ export function DayTimeline({
                 clientNames={clientNames}
                 projectClientIds={projectClientIds}
                 dimmed={isDraggingTask}
+                onDismissOverlay={dismissFreeSlotOverlay}
                 onClick={() => {
                   if (entryClickAllowed()) onEntryClick(entry);
                 }}
@@ -428,17 +492,6 @@ export function DayTimeline({
                 />
               );
             })}
-
-            {hoverFreeSlot && !isDraggingTask && !schedulePreview && (
-              <FreeSlotAddOverlay
-                slot={hoverFreeSlot}
-                onDismiss={() => setHoverFreeSlot(null)}
-                onSelect={(slot, durationMinutes) => {
-                  setHoverFreeSlot(null);
-                  onFreeSlotClick(slot, durationMinutes);
-                }}
-              />
-            )}
 
             {nowTopPx !== null && (
               <div
@@ -481,6 +534,7 @@ function MomentEntryMarker({
   clientNames,
   projectClientIds,
   dimmed,
+  onDismissOverlay,
   onClick,
 }: {
   entry: TimeEntryWithRelations;
@@ -488,8 +542,45 @@ function MomentEntryMarker({
   clientNames: Map<string, string>;
   projectClientIds: Map<string, string>;
   dimmed?: boolean;
+  onDismissOverlay?: () => void;
   onClick: () => void;
 }) {
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const tooltipTimerRef = useRef<number | null>(null);
+
+  const clearTooltipTimer = useCallback(() => {
+    if (tooltipTimerRef.current != null) {
+      window.clearTimeout(tooltipTimerRef.current);
+      tooltipTimerRef.current = null;
+    }
+  }, []);
+
+  const hideTooltip = useCallback(() => {
+    clearTooltipTimer();
+    setTooltipPos(null);
+  }, [clearTooltipTimer]);
+
+  const showTooltipAt = useCallback(
+    (x: number, y: number) => {
+      clearTooltipTimer();
+      setTooltipPos({ x, y });
+    },
+    [clearTooltipTimer],
+  );
+
+  const scheduleTooltip = useCallback(
+    (x: number, y: number) => {
+      clearTooltipTimer();
+      tooltipTimerRef.current = window.setTimeout(() => {
+        setTooltipPos({ x, y });
+        tooltipTimerRef.current = null;
+      }, 200);
+    },
+    [clearTooltipTimer],
+  );
+
+  useEffect(() => () => clearTooltipTimer(), [clearTooltipTimer]);
+
   if (!entry.startAt) return null;
 
   const start = new Date(entry.startAt);
@@ -497,24 +588,59 @@ function MomentEntryMarker({
   const color = entryDisplayColor(entry);
   const timePrefix = formatEntryTimePrefix(entry.startAt, null, null);
   const label = formatEntryLabel(entry, display, clientNames, projectClientIds, timePrefix);
+  const tooltipLines = formatEntryTooltipLines(
+    entry,
+    clientNames,
+    projectClientIds,
+    timePrefix,
+  );
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "absolute left-14 right-2 z-[15] flex items-center gap-2 rounded-md border bg-background/95 px-2 py-1 text-left shadow-sm hover:bg-muted/50",
-        dimmed && "pointer-events-none opacity-60",
-      )}
-      style={{ top: topPx - 12 }}
-    >
-      <span
-        className="h-2.5 w-2.5 shrink-0 rotate-45 rounded-sm"
-        style={{ backgroundColor: color }}
-        aria-hidden
-      />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
-    </button>
+    <>
+      <button
+        type="button"
+        data-moment-entry
+        onClick={onClick}
+        onPointerEnter={() => onDismissOverlay?.()}
+        onMouseEnter={(e) => scheduleTooltip(e.clientX, e.clientY)}
+        onMouseMove={(e) => {
+          if (tooltipPos) showTooltipAt(e.clientX, e.clientY);
+        }}
+        onMouseLeave={hideTooltip}
+        className={cn(
+          "absolute left-14 right-2 z-[25] flex cursor-pointer items-center gap-2 rounded-md border bg-background/95 px-2 py-1 text-left shadow-sm hover:border-primary/40 hover:bg-muted/50",
+          dimmed && "pointer-events-none opacity-60",
+        )}
+        style={{ top: topPx - 12 }}
+      >
+        <span
+          className="h-2.5 w-2.5 shrink-0 rotate-45 rounded-sm"
+          style={{ backgroundColor: color }}
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
+      </button>
+      {tooltipPos &&
+        createPortal(
+          <div
+            className="pointer-events-none fixed z-[100] max-w-xs rounded-md border border-border bg-popover px-2.5 py-2 text-popover-foreground shadow-lg"
+            style={{
+              left: tooltipPos.x + ENTRY_TOOLTIP_OFFSET,
+              top: tooltipPos.y + ENTRY_TOOLTIP_OFFSET,
+            }}
+          >
+            <div className="space-y-0.5 text-xs leading-snug">
+              {tooltipLines.map((line, index) => (
+                <div key={index} className={cn(index === 0 && "font-medium text-foreground")}>
+                  {line}
+                </div>
+              ))}
+              <div className="pt-0.5 text-[10px] text-muted-foreground">Click to edit</div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
