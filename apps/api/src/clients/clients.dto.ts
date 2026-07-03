@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MinLength } from "class-validator";
+import { IsBoolean, IsNumber, IsOptional, IsString, MinLength, Min, MaxLength } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
 export class CreateClientDto {
@@ -11,6 +11,34 @@ export class CreateClientDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0.25)
+  dailyWorkHours?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  includeSaturdays?: boolean | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  includeSundays?: boolean | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultHourlyRate?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  defaultCurrency?: string | null;
 }
 
 export class UpdateClientDto {
@@ -24,4 +52,32 @@ export class UpdateClientDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0.25)
+  dailyWorkHours?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  includeSaturdays?: boolean | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsBoolean()
+  includeSundays?: boolean | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  defaultHourlyRate?: number | null;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(3)
+  defaultCurrency?: string | null;
 }

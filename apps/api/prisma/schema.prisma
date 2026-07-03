@@ -27,6 +27,12 @@ enum EntrySource {
   AI
 }
 
+enum TrackTimeMode {
+  SINGLE
+  MULTI
+  ASK
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -41,6 +47,13 @@ model User {
   role         Role     @default(USER)
   timezone     String   @default("UTC")
   active       Boolean  @default(true)
+  dailyWorkHours       Decimal @default(8) @db.Decimal(4, 2)
+  includeSaturdays     Boolean @default(false)
+  includeSundays       Boolean @default(false)
+  onlyBillableProjects Boolean @default(false)
+  trackTimeMode        TrackTimeMode @default(SINGLE)
+  minimalTaskMinutes   Int           @default(15)
+  useTimeGrid          Boolean       @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -63,6 +76,11 @@ model Client {
   userId    String
   name      String
   note      String?
+  dailyWorkHours     Decimal? @db.Decimal(4, 2)
+  includeSaturdays   Boolean?
+  includeSundays     Boolean?
+  defaultHourlyRate  Decimal? @db.Decimal(10, 2)
+  defaultCurrency    String?  @db.VarChar(3)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -106,6 +124,7 @@ model Task {
   externalUrl String?
   status      TaskStatus @default(TODO)
   note        String?
+  sortOrder   Int        @default(0)
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 

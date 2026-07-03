@@ -30,9 +30,18 @@ export type AlertOptions = {
   variant?: "info" | "success" | "error";
 };
 
+export type ChooseOptions = {
+  title: string;
+  description: string;
+  primaryLabel: string;
+  secondaryLabel: string;
+  cancelLabel?: string;
+};
+
 type AppDialogContextValue = {
   confirm: (options: ConfirmOptions) => Promise<boolean>;
   alert: (options: AlertOptions) => Promise<void>;
+  choose: (options: ChooseOptions) => Promise<"primary" | "secondary" | null>;
 };
 
 const AppDialogContext = createContext<AppDialogContextValue | null>(null);
@@ -52,6 +61,9 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
   const [alertState, setAlertState] = useState<AlertOptions | null>(null);
   const alertResolveRef = useRef<(() => void) | null>(null);
 
+  const [chooseState, setChooseState] = useState<ChooseOptions | null>(null);
+  const chooseResolveRef = useRef<((value: "primary" | "secondary" | null) => void) | null>(null);
+
   const confirm = useCallback((options: ConfirmOptions) => {
     return new Promise<boolean>((resolve) => {
       confirmResolveRef.current = resolve;
@@ -63,6 +75,13 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
     return new Promise<void>((resolve) => {
       alertResolveRef.current = resolve;
       setAlertState(options);
+    });
+  }, []);
+
+  const choose = useCallback((options: ChooseOptions) => {
+    return new Promise<"primary" | "secondary" | null>((resolve) => {
+      chooseResolveRef.current = resolve;
+      setChooseState(options);
     });
   }, []);
 
@@ -78,8 +97,14 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
     setAlertState(null);
   }
 
+  function finishChoose(result: "primary" | "secondary" | null) {
+    chooseResolveRef.current?.(result);
+    chooseResolveRef.current = null;
+    setChooseState(null);
+  }
+
   return (
-    <AppDialogContext.Provider value={{ confirm, alert }}>
+    <AppDialogContext.Provider value={{ confirm, alert, choose }}>
       {children}
 
       <Dialog open={confirmState != null} onOpenChange={(open) => !open && finishConfirm(false)}>
@@ -112,6 +137,26 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
           <DialogFooter>
             <Button type="button" onClick={() => finishAlert()}>
               OK
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={chooseState != null} onOpenChange={(open) => !open && finishChoose(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{chooseState?.title}</DialogTitle>
+            <DialogDescription>{chooseState?.description}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="dialogOutline" onClick={() => finishChoose(null)}>
+              {chooseState?.cancelLabel ?? "Cancel"}
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => finishChoose("secondary")}>
+              {chooseState?.secondaryLabel}
+            </Button>
+            <Button type="button" onClick={() => finishChoose("primary")}>
+              {chooseState?.primaryLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

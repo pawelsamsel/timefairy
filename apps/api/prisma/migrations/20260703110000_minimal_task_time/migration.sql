@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN "minimalTaskMinutes" INTEGER NOT NULL DEFAULT 15;
+ALTER TABLE "User" ADD COLUMN "useTimeGrid" BOOLEAN NOT NULL DEFAULT false;

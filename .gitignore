@@ -3,7 +3,11 @@ dist/
 build/
 .turbo/
 .env
+.env.*
+!.env.example
 .env.local
+timefairy-export-*.json
+*.export.json
 *.log
 .DS_Store
 coverage/

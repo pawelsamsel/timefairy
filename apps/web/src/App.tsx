@@ -14,6 +14,8 @@ import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { AdminSettingsPage } from "./pages/AdminSettingsPage";
 import { ProfileSettingsPage } from "./pages/ProfileSettingsPage";
 import { ManageDataPage } from "./pages/ManageDataPage";
+import { CalendarPage } from "./pages/CalendarPage";
+import { WorkHoursSettingsPage } from "./pages/WorkHoursSettingsPage";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, ready } = useAuth();
@@ -53,6 +55,7 @@ export function App() {
       >
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
         <Route path="lanes" element={<Navigate to="/app/settings/lanes" replace />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="projects" element={<ProjectsPage />} />
@@ -60,6 +63,7 @@ export function App() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="settings" element={<Navigate to="profile" replace />} />
         <Route path="settings/profile" element={<ProfileSettingsPage />} />
+        <Route path="settings/work-hours" element={<WorkHoursSettingsPage />} />
         <Route path="settings/lanes" element={<LanesPage />} />
         <Route path="settings/data" element={<ManageDataPage />} />
         <Route

@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, IsUrl, IsUUID, MaxLength, MinLength } from "class-validator";
+import { IsArray, IsEnum, IsOptional, IsString, IsUrl, IsUUID, MaxLength, MinLength } from "class-validator";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { TaskStatus } from "@prisma/client";
 
@@ -76,4 +76,11 @@ export class UpdateTaskDto {
   @IsOptional()
   @IsString()
   note?: string;
+}
+
+export class ReorderTasksDto {
+  @ApiProperty({ type: [String] })
+  @IsArray()
+  @IsUUID("4", { each: true })
+  taskIds!: string[];
 }

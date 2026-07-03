@@ -117,7 +117,7 @@ export function ManageDataPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Manage data</h1>
+        <h1 className="text-xl font-semibold tracking-tight">Manage data</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Import and export a backup of your clients, projects, tasks, lanes, and time entries.
         </p>

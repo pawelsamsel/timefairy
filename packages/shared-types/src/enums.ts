@@ -27,3 +27,10 @@ export const TaskStatus = {
   DONE: "DONE",
 } as const;
 export type TaskStatus = (typeof TaskStatus)[keyof typeof TaskStatus];
+
+export const TrackTimeMode = {
+  SINGLE: "SINGLE",
+  MULTI: "MULTI",
+  ASK: "ASK",
+} as const;
+export type TrackTimeMode = (typeof TrackTimeMode)[keyof typeof TrackTimeMode];

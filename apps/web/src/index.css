@@ -110,13 +110,13 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground min-h-screen antialiased;
+    @apply bg-background text-foreground min-h-screen antialiased text-sm;
   }
 }
 
 @layer components {
   .native-picker-input {
-    min-height: 2.5rem;
+    min-height: 2rem;
     color-scheme: light;
   }
   .dark .native-picker-input {
@@ -131,13 +131,13 @@
   }
 
   .card {
-    @apply rounded-md bg-card text-card-foreground shadow-sm p-4;
+    @apply rounded-md bg-card text-card-foreground shadow-sm p-3;
   }
   .btn-primary {
-    @apply inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50;
+    @apply inline-flex h-8 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50;
   }
   .btn-danger {
-    @apply inline-flex h-9 items-center justify-center rounded-md border border-destructive/50 bg-destructive/10 px-4 text-sm text-destructive hover:bg-destructive/20;
+    @apply inline-flex h-8 items-center justify-center rounded-md border border-destructive/50 bg-destructive/10 px-3 text-sm text-destructive hover:bg-destructive/20;
   }
 
   .dialog-surface label {

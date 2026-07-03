@@ -139,7 +139,7 @@ export function InlineTaskAdd({
         <div className="flex items-center gap-2">
           {showProjectSelect && !fixedProjectId && (
             <Select value={projectId} onValueChange={setProjectId}>
-              <SelectTrigger className="h-9 w-[160px] shrink-0">
+              <SelectTrigger className="w-[160px] shrink-0">
                 <SelectValue placeholder="Project" />
               </SelectTrigger>
               <SelectContent>
@@ -157,7 +157,7 @@ export function InlineTaskAdd({
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Task name…"
             disabled={create.isPending}
-            className="h-9 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0"
+            className="h-8 flex-1 border-0 bg-transparent shadow-none focus-visible:ring-0"
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 e.preventDefault();

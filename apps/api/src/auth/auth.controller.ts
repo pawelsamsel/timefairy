@@ -3,6 +3,7 @@ import { AuthGuard } from "@nestjs/passport";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { AuthService } from "./auth.service";
 import { ChangeOwnPasswordDto, LoginDto, RegisterDto, RefreshDto } from "./auth.dto";
+import { UpdateWorkHoursPreferencesDto } from "./work-hours.dto";
 import { CurrentUser, RequestUser } from "../common/decorators";
 
 @ApiTags("auth")
@@ -37,5 +38,22 @@ export class AuthController {
   @ApiBearerAuth()
   changePassword(@CurrentUser() user: RequestUser, @Body() dto: ChangeOwnPasswordDto) {
     return this.authService.changeOwnPassword(user.sub, dto);
+  }
+
+  @Get("me/work-hours")
+  @UseGuards(AuthGuard("jwt"))
+  @ApiBearerAuth()
+  getWorkHoursPreferences(@CurrentUser() user: RequestUser) {
+    return this.authService.getWorkHoursPreferences(user.sub);
+  }
+
+  @Patch("me/work-hours")
+  @UseGuards(AuthGuard("jwt"))
+  @ApiBearerAuth()
+  updateWorkHoursPreferences(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: UpdateWorkHoursPreferencesDto,
+  ) {
+    return this.authService.updateWorkHoursPreferences(user.sub, dto);
   }
 }

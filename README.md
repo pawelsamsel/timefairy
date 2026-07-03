@@ -33,7 +33,7 @@ pnpm dev
 - API: http://localhost:3000
 - Swagger: http://localhost:3000/api/docs
 
-**Default admin:** `admin@timefairy.local` / `admin123`
+**Default admin:** `admin@example.com` / `admin123`
 
 ## Docker Compose
 

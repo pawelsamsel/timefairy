@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ChevronLeft, ChevronRight, List, Plus } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { CalendarDays, ChevronLeft, ChevronRight, List, ListTodo, Plus } from "lucide-react";
 import { DayViewToolbar } from "@/components/day/day-view-toolbar";
-import { EntrySource, LaneType, type TimeEntryWithRelations } from "@timefairy/shared-types";
+import { EntrySource, LaneType, TrackTimeMode, type TaskWithRelations, type TimeEntryWithRelations } from "@timefairy/shared-types";
 import { api } from "../lib/api";
 import {
   addDays,
@@ -21,6 +22,7 @@ import {
 import { DayViewSummary } from "@/components/day/day-view-summary";
 import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
+import { DelayedTooltip } from "@/components/ui/delayed-tooltip";
 import { Input } from "@/components/ui/input";
 import {
   Card,
@@ -49,24 +51,53 @@ import {
   type TimeEntryCreateInitial,
 } from "@/components/time-entry/time-entry-create-dialog";
 import { TimeEntryEditDialog } from "@/components/time-entry/time-entry-edit-dialog";
+import { DayViewMiniCalendar } from "@/components/calendar/day-view-mini-calendar";
+import {
+  fallbackWorkHoursPreferences,
+  resolveEffectiveWorkHoursPreferences,
+} from "@/lib/work-hours";
+import { useWorkHoursPreferences } from "@/lib/use-work-hours-preferences";
+import { findActiveTaskStartMoment, findAllActiveTaskMoments, taskForQuickLog } from "@/lib/task-quick-log";
+import { findEventsLaneId } from "@/lib/time-entry-kind";
+import { useAppDialog } from "@/lib/app-dialog";
+import {
+  computeLoggedBlockIsoRange,
+  elapsedMinutesFromStart,
+  resolveTimelineGridConfig,
+} from "@/lib/timeline-grid";
 
 type DayViewMode = "list" | "calendar";
 
 const DAY_VIEW_MODE_KEY = "timefairy-day-view-mode";
 const DAY_VIEW_DATE_KEY = "timefairy-view-date:dashboard";
+const DAY_VIEW_MINI_CALENDAR_KEY = "timefairy-day-view-mini-calendar";
+const DAY_VIEW_TASKS_PANEL_KEY = "timefairy-day-view-tasks-panel";
 
 function loadDayViewMode(): DayViewMode {
   const stored = localStorage.getItem(DAY_VIEW_MODE_KEY);
   return stored === "calendar" ? "calendar" : "list";
 }
 
+function loadMiniCalendarVisible(): boolean {
+  return localStorage.getItem(DAY_VIEW_MINI_CALENDAR_KEY) === "true";
+}
+
+function loadTasksPanelVisible(): boolean {
+  const stored = localStorage.getItem(DAY_VIEW_TASKS_PANEL_KEY);
+  return stored !== "false";
+}
+
 export function DashboardPage() {
   const qc = useQueryClient();
   const timeEntryUndo = useTimeEntryUndo();
+  const { confirm, choose } = useAppDialog();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedDate, setSelectedDate] = useSessionDate(DAY_VIEW_DATE_KEY);
   const [display, setDisplay] = useDayViewDisplay();
   const [filters, setFilters] = useDayViewFilters();
   const [viewMode, setViewMode] = useState<DayViewMode>(() => loadDayViewMode());
+  const [miniCalendarVisible, setMiniCalendarVisible] = useState(() => loadMiniCalendarVisible());
+  const [tasksPanelVisible, setTasksPanelVisible] = useState(() => loadTasksPanelVisible());
   const [isDraggingTask, setIsDraggingTask] = useState(false);
   const [editEntry, setEditEntry] = useState<TimeEntryWithRelations | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -77,6 +108,7 @@ export function DashboardPage() {
   const lanesQuery = useQuery({ queryKey: ["lanes"], queryFn: () => api.listLanes() });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: () => api.listProjects() });
   const clientsQuery = useQuery({ queryKey: ["clients"], queryFn: () => api.listClients() });
+  const workHoursQuery = useWorkHoursPreferences();
   const entriesQuery = useQuery({
     queryKey: ["time-entries", selectedDate],
     queryFn: () => api.listTimeEntries(dayRange),
@@ -102,10 +134,31 @@ export function DashboardPage() {
   const [dropError, setDropError] = useState("");
   const [scheduleError, setScheduleError] = useState("");
   const [copyError, setCopyError] = useState("");
+  const [quickLogError, setQuickLogError] = useState("");
+  const [quickLogTaskId, setQuickLogTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem(DAY_VIEW_MODE_KEY, viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem(DAY_VIEW_MINI_CALENDAR_KEY, String(miniCalendarVisible));
+  }, [miniCalendarVisible]);
+
+  useEffect(() => {
+    localStorage.setItem(DAY_VIEW_TASKS_PANEL_KEY, String(tasksPanelVisible));
+  }, [tasksPanelVisible]);
+
+  useEffect(() => {
+    const dateParam = searchParams.get("date");
+    if (!dateParam || !/^\d{4}-\d{2}-\d{2}$/.test(dateParam) || dateParam === selectedDate) {
+      return;
+    }
+    setSelectedDate(dateParam);
+    const next = new URLSearchParams(searchParams);
+    next.delete("date");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, selectedDate, setSearchParams, setSelectedDate]);
 
   useEffect(() => {
     if (lanes.length === 0 && projects.length === 0 && clients.length === 0) return;
@@ -124,6 +177,15 @@ export function DashboardPage() {
     [allEntries],
   );
   const filtersActive = dayViewFiltersActive(filters);
+  const workHoursPreferences = useMemo(
+    () =>
+      resolveEffectiveWorkHoursPreferences(
+        fallbackWorkHoursPreferences(workHoursQuery.data),
+        filters,
+        clients,
+      ),
+    [workHoursQuery.data, filters, clients],
+  );
 
   const defaultLoggedLaneId = useMemo(() => {
     const main =
@@ -202,6 +264,157 @@ export function DashboardPage() {
     onError: (err) => setCopyError(getErrorMessage(err, "Failed to copy entry")),
   });
 
+  const quickStartTask = useMutation({
+    mutationFn: async (task: Pick<TaskWithRelations, "id" | "projectId">) => {
+      const eventsLaneId = findEventsLaneId(lanes);
+      if (!eventsLaneId) throw new Error("No events lane configured");
+      return api.createTimeEntry({
+        laneId: eventsLaneId,
+        projectId: task.projectId,
+        taskId: task.id,
+        startAt: new Date().toISOString(),
+        source: EntrySource.WEB,
+      });
+    },
+    onMutate: (task) => setQuickLogTaskId(task.id),
+    onSettled: () => setQuickLogTaskId(null),
+    onSuccess: (created) => {
+      timeEntryUndo.pushCreateUndo(created.id);
+      qc.invalidateQueries({ queryKey: ["time-entries"] });
+      setQuickLogError("");
+    },
+    onError: (err) => setQuickLogError(getErrorMessage(err, "Failed to start work")),
+  });
+
+  const timelineGridConfig = useMemo(
+    () => resolveTimelineGridConfig(workHoursPreferences),
+    [workHoursPreferences],
+  );
+
+  async function performQuickStop(
+    task: Pick<TaskWithRelations, "id" | "projectId"> & { title?: string },
+    options: { enforceMinimum?: boolean; skipPrompt?: boolean } = {},
+  ) {
+    const now = new Date().toISOString();
+    const activeStart = findActiveTaskStartMoment(allEntries, task.id, selectedDate);
+    const taskTitle = task.title ?? activeStart?.task?.title ?? "Task";
+
+    if (activeStart?.startAt && defaultLoggedLaneId) {
+      const elapsed = elapsedMinutesFromStart(activeStart.startAt, now);
+      let enforceMinimum = options.enforceMinimum ?? false;
+
+      if (!options.skipPrompt && !enforceMinimum && elapsed < timelineGridConfig.minEntryMinutes) {
+        const choice = await choose({
+          title: "Session shorter than minimum",
+          description: `"${taskTitle}" ran for ${elapsed} min, below your ${timelineGridConfig.minEntryMinutes} min minimum. What should we do?`,
+          primaryLabel: `Log ${timelineGridConfig.minEntryMinutes} min`,
+          secondaryLabel: "Skip — don't log",
+        });
+        if (choice === null) return null;
+        if (choice === "secondary") {
+          timeEntryUndo.pushDeleteUndo(activeStart);
+          await api.deleteTimeEntry(activeStart.id);
+          qc.invalidateQueries({ queryKey: ["time-entries"] });
+          return null;
+        }
+        enforceMinimum = true;
+      }
+
+      const range = computeLoggedBlockIsoRange(
+        selectedDate,
+        activeStart.startAt,
+        now,
+        timelineGridConfig,
+        { enforceMinimum },
+      );
+
+      return api.createTimeEntry({
+        laneId: defaultLoggedLaneId,
+        projectId: task.projectId,
+        taskId: task.id,
+        startAt: range.startAt,
+        endAt: range.endAt,
+        source: EntrySource.WEB,
+      });
+    }
+
+    const eventsLaneId = findEventsLaneId(lanes);
+    if (!eventsLaneId) throw new Error("No events lane configured");
+    return api.createTimeEntry({
+      laneId: eventsLaneId,
+      projectId: task.projectId,
+      taskId: task.id,
+      startAt: now,
+      source: EntrySource.WEB,
+    });
+  }
+
+  const quickStopTask = useMutation({
+    mutationFn: (task: Pick<TaskWithRelations, "id" | "projectId"> & { title?: string }) =>
+      performQuickStop(task),
+    onMutate: (task) => setQuickLogTaskId(task.id),
+    onSettled: () => setQuickLogTaskId(null),
+    onSuccess: (created) => {
+      if (!created) return;
+      timeEntryUndo.pushCreateUndo(created.id);
+      qc.invalidateQueries({ queryKey: ["time-entries"] });
+      setQuickLogError("");
+    },
+    onError: (err) => setQuickLogError(getErrorMessage(err, "Failed to stop work")),
+  });
+
+  const activeTaskIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const entry of allEntries) {
+      if (!entry.taskId || ids.has(entry.taskId)) continue;
+      if (findActiveTaskStartMoment(allEntries, entry.taskId, selectedDate)) {
+        ids.add(entry.taskId);
+      }
+    }
+    return ids;
+  }, [allEntries, selectedDate]);
+
+  async function handleQuickToggle(task: TaskWithRelations) {
+    if (activeTaskIds.has(task.id)) {
+      quickStopTask.mutate(task);
+      return;
+    }
+
+    const otherActiveMoments = findAllActiveTaskMoments(allEntries, selectedDate).filter(
+      (entry) => entry.taskId !== task.id,
+    );
+    const trackTimeMode = workHoursPreferences.trackTimeMode;
+
+    if (otherActiveMoments.length === 0 || trackTimeMode === TrackTimeMode.MULTI) {
+      quickStartTask.mutate(task);
+      return;
+    }
+
+    if (trackTimeMode === TrackTimeMode.ASK) {
+      const otherTitle = otherActiveMoments[0].task?.title ?? "another task";
+      const confirmed = await confirm({
+        title: "Switch tracked task?",
+        description: `"${otherTitle}" is currently active. Stop it and start "${task.title}"?`,
+        confirmLabel: "Stop and switch",
+      });
+      if (!confirmed) return;
+    }
+
+    setQuickLogTaskId(task.id);
+    try {
+      for (const moment of otherActiveMoments) {
+        const stopTarget = taskForQuickLog(moment);
+        if (stopTarget) await quickStopTask.mutateAsync(stopTarget);
+      }
+      await quickStartTask.mutateAsync(task);
+      setQuickLogError("");
+    } catch (err) {
+      setQuickLogError(getErrorMessage(err, "Failed to switch task"));
+    } finally {
+      setQuickLogTaskId(null);
+    }
+  }
+
   function openCreateDialog(initialValues: TimeEntryCreateInitial = {}) {
     setCreateInitial(initialValues);
     setCreateOpen(true);
@@ -244,35 +457,63 @@ export function DashboardPage() {
       : null;
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] min-h-[32rem] flex-col gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Day view</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Day view</h1>
           <p className="text-sm text-muted-foreground">{formatDayLabel(selectedDate)}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-md border bg-background p-0.5">
+          <div className="flex gap-1 rounded-md border bg-background p-0.5">
+            <DelayedTooltip label="List">
+              <Button
+                type="button"
+                size="icon"
+                variant={viewMode === "list" ? "default" : "ghost"}
+                onClick={() => setViewMode("list")}
+                aria-pressed={viewMode === "list"}
+                aria-label="List"
+              >
+                <List className="h-4 w-4" />
+              </Button>
+            </DelayedTooltip>
+            <DelayedTooltip label="Calendar">
+              <Button
+                type="button"
+                size="icon"
+                variant={viewMode === "calendar" ? "default" : "ghost"}
+                onClick={() => setViewMode("calendar")}
+                aria-pressed={viewMode === "calendar"}
+                aria-label="Calendar"
+              >
+                <CalendarDays className="h-4 w-4" />
+              </Button>
+            </DelayedTooltip>
+          </div>
+          <DelayedTooltip label={miniCalendarVisible ? "Hide mini calendar" : "Mini calendar"}>
             <Button
               type="button"
-              size="sm"
-              variant={viewMode === "list" ? "default" : "ghost"}
-              className="gap-1.5"
-              onClick={() => setViewMode("list")}
-            >
-              <List className="h-4 w-4" />
-              List
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={viewMode === "calendar" ? "default" : "ghost"}
-              className="gap-1.5"
-              onClick={() => setViewMode("calendar")}
+              size="icon"
+              variant={miniCalendarVisible ? "default" : "outline"}
+              onClick={() => setMiniCalendarVisible((visible) => !visible)}
+              aria-pressed={miniCalendarVisible}
+              aria-label={miniCalendarVisible ? "Hide mini calendar" : "Show mini calendar"}
             >
               <CalendarDays className="h-4 w-4" />
-              Calendar
             </Button>
-          </div>
+          </DelayedTooltip>
+          <DelayedTooltip label={tasksPanelVisible ? "Hide tasks" : "Tasks"}>
+            <Button
+              type="button"
+              size="icon"
+              variant={tasksPanelVisible ? "default" : "outline"}
+              onClick={() => setTasksPanelVisible((visible) => !visible)}
+              aria-pressed={tasksPanelVisible}
+              aria-label={tasksPanelVisible ? "Hide tasks panel" : "Show tasks panel"}
+            >
+              <ListTodo className="h-4 w-4" />
+            </Button>
+          </DelayedTooltip>
           <Button
             type="button"
             variant="outline"
@@ -286,7 +527,7 @@ export function DashboardPage() {
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-auto min-h-10 native-picker-input"
+            className="w-auto min-h-8 native-picker-input"
           />
           <Button
             type="button"
@@ -300,10 +541,6 @@ export function DashboardPage() {
           <Button type="button" variant="secondary" onClick={() => setSelectedDate(toDateInputValue(new Date()))}>
             Today
           </Button>
-          <Button type="button" className="gap-1.5" onClick={() => openCreateDialog()}>
-            <Plus className="h-4 w-4" />
-            Add log
-          </Button>
           <DayViewToolbar
             display={display}
             onDisplayChange={setDisplay}
@@ -313,6 +550,10 @@ export function DashboardPage() {
             projects={projects}
             clients={clients}
           />
+          <Button type="button" className="gap-1.5" onClick={() => openCreateDialog()}>
+            <Plus className="h-4 w-4" />
+            Add log
+          </Button>
         </div>
       </div>
 
@@ -340,6 +581,12 @@ export function DashboardPage() {
         </p>
       )}
 
+      {quickLogError && (
+        <p className="shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+          {quickLogError}
+        </p>
+      )}
+
       {filtersActive && entries.length === 0 && allEntries.length > 0 && (
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950">
           <span>
@@ -351,18 +598,41 @@ export function DashboardPage() {
         </div>
       )}
 
+      <div className="flex min-h-0 flex-1 gap-4">
+        {miniCalendarVisible && (
+          <DayViewMiniCalendar
+            selectedDate={selectedDate}
+            onSelectDate={setSelectedDate}
+            filters={filters}
+            projectClientIds={projectClientIds}
+            filtersActive={filtersActive}
+            workHoursPreferences={workHoursPreferences}
+          />
+        )}
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
       {viewMode === "list" ? (
-        <ListDayLayout
-          entries={entries}
-          allEntryCount={allEntries.length}
-          totalMinutes={totalMinutes}
-          filtersActive={filtersActive}
-          display={display}
-          clientNames={clientNames}
-          projectClientIds={projectClientIds}
-          onEntryClick={setEditEntry}
-          onLogTime={() => openCreateDialog()}
-        />
+        <div className="flex min-h-0 flex-1 flex-row gap-4">
+          <ListDayLayout
+            entries={entries}
+            allEntryCount={allEntries.length}
+            totalMinutes={totalMinutes}
+            filtersActive={filtersActive}
+            display={display}
+            clientNames={clientNames}
+            projectClientIds={projectClientIds}
+            onEntryClick={setEditEntry}
+          />
+          {tasksPanelVisible && (
+            <DayTasksPanelCard
+              activeTaskIds={activeTaskIds}
+              pendingTaskId={quickLogTaskId}
+              onQuickToggle={handleQuickToggle}
+              onDragStart={() => setIsDraggingTask(true)}
+              onDragEnd={() => setIsDraggingTask(false)}
+            />
+          )}
+        </div>
       ) : (
         <div className="flex min-h-0 flex-1 flex-row gap-4">
           <DayTimeline
@@ -373,34 +643,24 @@ export function DashboardPage() {
             clientNames={clientNames}
             projectClientIds={projectClientIds}
             isDraggingTask={isDraggingTask}
+            gridStepMinutes={timelineGridConfig.gridStepMinutes}
+            minEntryMinutes={timelineGridConfig.minEntryMinutes}
+            useTimeGrid={timelineGridConfig.useTimeGrid}
             onTaskDrop={handleTaskDrop}
             onEntryClick={setEditEntry}
             onEntryCopy={(entry) => copyEntry.mutate(entry)}
             onEntryScheduleChange={handleEntryScheduleChange}
             onFreeSlotClick={handleFreeSlotClick}
           />
-          <Card className="flex w-[22rem] min-h-0 shrink-0 flex-col overflow-hidden">
-            <CardHeader className="shrink-0 pb-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <CardTitle>Tasks</CardTitle>
-                  <CardDescription className="pt-1">
-                    {(totalMinutes / 60).toFixed(2)} h logged · drag tasks onto the timeline
-                  </CardDescription>
-                </div>
-                <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1.5" onClick={() => openCreateDialog()}>
-                  <Plus className="h-4 w-4" />
-                  Add log
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="min-h-0 flex-1 overflow-y-auto">
-              <DayTaskPanel
-                onDragStart={() => setIsDraggingTask(true)}
-                onDragEnd={() => setIsDraggingTask(false)}
-              />
-            </CardContent>
-          </Card>
+          {tasksPanelVisible && (
+            <DayTasksPanelCard
+              activeTaskIds={activeTaskIds}
+              pendingTaskId={quickLogTaskId}
+              onQuickToggle={handleQuickToggle}
+              onDragStart={() => setIsDraggingTask(true)}
+              onDragEnd={() => setIsDraggingTask(false)}
+            />
+          )}
         </div>
       )}
 
@@ -410,6 +670,8 @@ export function DashboardPage() {
         filtersActive={filtersActive}
         allTotalMinutes={allTotalMinutes}
       />
+        </div>
+      </div>
 
       <TimeEntryCreateDialog
         open={createOpen}
@@ -429,6 +691,34 @@ export function DashboardPage() {
   );
 }
 
+function DayTasksPanelCard({
+  activeTaskIds,
+  pendingTaskId,
+  onQuickToggle,
+  onDragStart,
+  onDragEnd,
+}: {
+  activeTaskIds: Set<string>;
+  pendingTaskId?: string | null;
+  onQuickToggle: (task: TaskWithRelations) => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}) {
+  return (
+    <Card className="flex h-full min-h-0 w-[22rem] shrink-0 flex-col">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-4">
+        <DayTaskPanel
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          activeTaskIds={activeTaskIds}
+          pendingTaskId={pendingTaskId}
+          onQuickToggle={onQuickToggle}
+        />
+      </CardContent>
+    </Card>
+  );
+}
+
 function ListDayLayout({
   entries,
   allEntryCount,
@@ -438,7 +728,6 @@ function ListDayLayout({
   clientNames,
   projectClientIds,
   onEntryClick,
-  onLogTime,
 }: {
   entries: TimeEntryWithRelations[];
   allEntryCount: number;
@@ -448,21 +737,14 @@ function ListDayLayout({
   clientNames: Map<string, string>;
   projectClientIds: Map<string, string>;
   onEntryClick: (entry: TimeEntryWithRelations) => void;
-  onLogTime: () => void;
 }) {
   return (
-    <Card className="w-full min-h-0 flex-1 overflow-hidden">
-      <CardHeader className="flex flex-row items-start justify-between gap-4">
-        <div>
-          <CardTitle>Entries this day</CardTitle>
-          <CardDescription>
-            Total: {(totalMinutes / 60).toFixed(2)} h · {entries.length} entries
-          </CardDescription>
-        </div>
-        <Button type="button" className="shrink-0 gap-1.5" onClick={onLogTime}>
-          <Plus className="h-4 w-4" />
-          Add log
-        </Button>
+    <Card className="min-h-0 min-w-0 w-full flex-1 overflow-hidden">
+      <CardHeader>
+        <CardTitle>Entries this day</CardTitle>
+        <CardDescription>
+          Total: {(totalMinutes / 60).toFixed(2)} h · {entries.length} entries
+        </CardDescription>
       </CardHeader>
       <CardContent className="max-h-full overflow-y-auto space-y-0 divide-y divide-border/40">
         {entries.map((entry) => (

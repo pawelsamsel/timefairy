@@ -76,7 +76,7 @@ export function IconSearchPicker({
           disabled={disabled}
           title={selected ? `${title}: ${selected.label}` : title}
           className={cn(
-            "h-9 w-9 shrink-0 border-border/80",
+            "h-8 w-8 shrink-0 border-border/80",
             value && "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15",
           )}
           style={

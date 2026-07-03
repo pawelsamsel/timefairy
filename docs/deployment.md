@@ -197,7 +197,7 @@ docker compose -f docker-compose.prod.yml --env-file .env exec api \
   sh -c "cd /app/apps/api && node prisma/seed.js"
 ```
 
-Default admin after seed: `admin@timefairy.local` / `admin123` — change immediately in production.
+Default admin after seed: `admin@example.com` / `admin123` — change immediately in production.
 
 ## Rollback
 

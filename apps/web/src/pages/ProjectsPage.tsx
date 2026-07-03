@@ -237,7 +237,7 @@ export function ProjectsPage() {
     <div className="space-y-6 w-full">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Projects</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage projects, hourly rates, and client assignment.
           </p>

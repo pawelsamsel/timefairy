@@ -23,6 +23,7 @@ import {
   minutesToTopPx,
   momentEntryStartMinute,
   timedEntryColumnStyle,
+  snapTimelineMinutes,
   type TimedEntryBlockLayout,
   slotKey,
   TIMELINE_DROP_HOLD_MS,
@@ -64,6 +65,9 @@ type DayTimelineProps = {
   onEntryCopy: (entry: TimeEntryWithRelations) => void;
   onEntryScheduleChange: (change: EntryScheduleChange) => void;
   onFreeSlotClick: (slot: TimelineDropSlot, durationMinutes?: number) => void;
+  gridStepMinutes?: number;
+  minEntryMinutes?: number;
+  useTimeGrid?: boolean;
 };
 
 export function DayTimeline({
@@ -79,6 +83,9 @@ export function DayTimeline({
   onEntryCopy,
   onEntryScheduleChange,
   onFreeSlotClick,
+  gridStepMinutes = 15,
+  minEntryMinutes = 15,
+  useTimeGrid = false,
 }: DayTimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -178,15 +185,19 @@ export function DayTimeline({
   const minuteFromClientY = useCallback(
     (clientY: number) => {
       if (!scrollRef.current) return null;
-      return clientYToTimelineMinute(clientY, scrollRef.current, gridOffsetTop());
+      const raw = clientYToTimelineMinute(clientY, scrollRef.current, gridOffsetTop());
+      if (raw === null) return null;
+      return useTimeGrid ? snapTimelineMinutes(raw, gridStepMinutes) : raw;
     },
-    [],
+    [gridStepMinutes, useTimeGrid],
   );
 
   const { preview: schedulePreview, startDrag, entryClickAllowed } = useEntryScheduleDrag({
     dateStr,
     minuteFromClientY,
     onScheduleChange: onEntryScheduleChange,
+    gridStepMinutes,
+    minEntryMinutes,
   });
 
   useEffect(() => {
@@ -288,7 +299,9 @@ export function DayTimeline({
     if (!payload) return;
 
     const options =
-      expandedHour !== null ? getExpandedDropOptions(expandedHour, occupiedRanges) : [];
+      expandedHour !== null
+        ? getExpandedDropOptions(expandedHour, occupiedRanges, gridStepMinutes, useTimeGrid)
+        : [];
 
     const slot =
       activeSlotKey != null
@@ -310,7 +323,9 @@ export function DayTimeline({
   }
 
   const expandedOptions =
-    expandedHour !== null ? getExpandedDropOptions(expandedHour, occupiedRanges) : [];
+    expandedHour !== null
+      ? getExpandedDropOptions(expandedHour, occupiedRanges, gridStepMinutes, useTimeGrid)
+      : [];
 
   return (
     <div
@@ -386,6 +401,24 @@ export function DayTimeline({
               />
             ))}
 
+            {useTimeGrid &&
+              hours.flatMap((hour) =>
+                Array.from({ length: Math.floor(60 / gridStepMinutes) - 1 }, (_, index) => {
+                  const offset = (index + 1) * gridStepMinutes;
+                  const topMinutes = hour * 60 + offset;
+                  return (
+                    <div
+                      key={`grid-${hour}-${offset}`}
+                      className="pointer-events-none absolute left-0 right-0 border-b border-border/15"
+                      style={{
+                        top: minutesToTopPx(topMinutes),
+                        height: 0,
+                      }}
+                    />
+                  );
+                }),
+              )}
+
             {highlightSlot && isDraggingTask && (
               <div
                 className="pointer-events-none absolute left-1 right-2 z-20 rounded-md border-2 border-dashed border-primary bg-primary/15"
@@ -445,6 +478,8 @@ export function DayTimeline({
             {hoverFreeSlot && !isDraggingTask && !schedulePreview && (
               <FreeSlotAddOverlay
                 slot={hoverFreeSlot}
+                minEntryMinutes={minEntryMinutes}
+                gridStepMinutes={gridStepMinutes}
                 onDismiss={dismissFreeSlotOverlay}
                 onSelect={(slot, durationMinutes) => {
                   dismissFreeSlotOverlay();

@@ -37,7 +37,7 @@ export function DateTimeField({ id, label, value, onChange, min, required }: Dat
           min={minDate}
           onChange={(e) => updateDate(e.target.value)}
           required={required}
-          className="min-h-10 native-picker-input"
+          className="min-h-8 native-picker-input"
         />
         <Input
           id={`${id}-time`}
@@ -47,7 +47,7 @@ export function DateTimeField({ id, label, value, onChange, min, required }: Dat
           step={300}
           onChange={(e) => updateTime(e.target.value)}
           required={required}
-          className="min-h-10 native-picker-input"
+          className="min-h-8 native-picker-input"
         />
       </div>
     </div>

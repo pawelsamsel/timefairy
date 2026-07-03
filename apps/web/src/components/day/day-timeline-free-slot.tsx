@@ -10,14 +10,22 @@ import { cn } from "@/lib/utils";
 
 type FreeSlotAddOverlayProps = {
   slot: TimelineDropSlot;
+  minEntryMinutes?: number;
+  gridStepMinutes?: number;
   onSelect: (slot: TimelineDropSlot, durationMinutes?: number) => void;
   onDismiss?: () => void;
 };
 
-export function FreeSlotAddOverlay({ slot, onSelect, onDismiss }: FreeSlotAddOverlayProps) {
+export function FreeSlotAddOverlay({
+  slot,
+  minEntryMinutes = 15,
+  gridStepMinutes = 15,
+  onSelect,
+  onDismiss,
+}: FreeSlotAddOverlayProps) {
   const heightPx = minutesToHeightPx(slot.durationMinutes);
   const compact = heightPx < 36;
-  const quickDurations = buildQuickDurations(slot);
+  const quickDurations = buildQuickDurations(slot, gridStepMinutes);
   const showQuickDurations = quickDurations.length > 1;
 
   return (
@@ -56,7 +64,7 @@ export function FreeSlotAddOverlay({ slot, onSelect, onDismiss }: FreeSlotAddOve
             <span className="text-[9px] leading-tight text-primary/80">
               {formatSlotLabel({
                 startMinutes: slot.startMinutes,
-                durationMinutes: slotDefaultDurationMinutes(slot),
+                durationMinutes: slotDefaultDurationMinutes(slot, minEntryMinutes),
               })}
             </span>
           )}
@@ -91,15 +99,15 @@ export function FreeSlotAddOverlay({ slot, onSelect, onDismiss }: FreeSlotAddOve
   );
 }
 
-function buildQuickDurations(slot: TimelineDropSlot): number[] {
-  if (slot.durationMinutes < 30) return [];
+function buildQuickDurations(slot: TimelineDropSlot, gridStepMinutes: number): number[] {
+  if (slot.durationMinutes < gridStepMinutes * 2) return [];
 
-  const candidates = [15, 30, 45, 60, slot.durationMinutes];
+  const candidates = [gridStepMinutes, gridStepMinutes * 2, gridStepMinutes * 3, 60, slot.durationMinutes];
   const seen = new Set<number>();
   const result: number[] = [];
 
   for (const duration of candidates) {
-    if (duration < 15 || duration > slot.durationMinutes || seen.has(duration)) continue;
+    if (duration < gridStepMinutes || duration > slot.durationMinutes || seen.has(duration)) continue;
     seen.add(duration);
     result.push(duration);
   }

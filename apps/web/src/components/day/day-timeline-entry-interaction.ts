@@ -31,10 +31,14 @@ export function useEntryScheduleDrag({
   dateStr,
   minuteFromClientY,
   onScheduleChange,
+  gridStepMinutes = 15,
+  minEntryMinutes = 15,
 }: {
   dateStr: string;
   minuteFromClientY: (clientY: number) => number | null;
   onScheduleChange: (change: EntryScheduleChange) => void;
+  gridStepMinutes?: number;
+  minEntryMinutes?: number;
 }) {
   const sessionRef = useRef<DragSession | null>(null);
   const previewRangeRef = useRef<MinuteRange | null>(null);
@@ -84,11 +88,11 @@ export function useEntryScheduleDrag({
         next = { start: initialRange.start, end: minute };
       }
 
-      const clamped = clampEntryMinuteRange(next);
+      const clamped = clampEntryMinuteRange(next, { gridStepMinutes, minEntryMinutes });
       if (!clamped) return;
       applyPreview(session.entryId, clamped);
     },
-    [applyPreview],
+    [applyPreview, gridStepMinutes, minEntryMinutes],
   );
 
   const onPointerMove = useCallback(

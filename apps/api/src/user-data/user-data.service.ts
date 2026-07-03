@@ -75,6 +75,7 @@ export class UserDataService {
         externalUrl: t.externalUrl,
         status: t.status,
         note: t.note,
+        sortOrder: t.sortOrder,
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
       })),
@@ -280,6 +281,7 @@ export class UserDataService {
           externalUrl: t.externalUrl,
           status: t.status,
           note: t.note,
+          sortOrder: t.sortOrder ?? 0,
           createdAt: new Date(t.createdAt),
           updatedAt: new Date(t.updatedAt),
         };

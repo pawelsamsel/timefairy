@@ -20,7 +20,7 @@ export class TasksService {
         ...(!projectId && clientId ? { project: { clientId } } : {}),
       },
       include: taskInclude,
-      orderBy: { updatedAt: "desc" },
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
     });
   }
 
@@ -48,6 +48,10 @@ export class TasksService {
       where: { id: dto.projectId, userId },
     });
     if (!project) throw new NotFoundException("Project not found");
+    const maxSort = await this.prisma.task.aggregate({
+      where: { userId },
+      _max: { sortOrder: true },
+    });
     return this.prisma.task.create({
       data: {
         userId,
@@ -58,6 +62,7 @@ export class TasksService {
         externalUrl: dto.externalUrl || null,
         status: dto.status,
         note: dto.note,
+        sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
       },
       include: taskInclude,
     });
@@ -95,6 +100,42 @@ export class TasksService {
     const task = await this.prisma.task.findFirst({ where: { id, userId } });
     if (!task) throw new NotFoundException("Task not found");
     await this.prisma.task.delete({ where: { id } });
+    return { ok: true };
+  }
+
+  async reorder(userId: string, orderedIds: string[]) {
+    if (orderedIds.length === 0) return { ok: true };
+
+    const allTasks = await this.prisma.task.findMany({
+      where: { userId },
+      orderBy: [{ sortOrder: "asc" }, { updatedAt: "desc" }],
+      select: { id: true },
+    });
+
+    const allIds = allTasks.map((task) => task.id);
+    const orderedSet = new Set(orderedIds);
+
+    for (const id of orderedIds) {
+      if (!allIds.includes(id)) {
+        throw new NotFoundException("Task not found");
+      }
+    }
+
+    let reorderIndex = 0;
+    const mergedIds = allIds.map((id) => {
+      if (!orderedSet.has(id)) return id;
+      return orderedIds[reorderIndex++]!;
+    });
+
+    await this.prisma.$transaction(
+      mergedIds.map((id, index) =>
+        this.prisma.task.update({
+          where: { id },
+          data: { sortOrder: index },
+        }),
+      ),
+    );
+
     return { ok: true };
   }
 }

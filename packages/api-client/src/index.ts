@@ -9,6 +9,8 @@ import type {
   CreateLaneInput,
   CreateTimeEntryInput,
   ChangeOwnPasswordInput,
+  WorkHoursPreferences,
+  UpdateWorkHoursPreferencesInput,
   ChangeUserPasswordInput,
   UpdateTimeEntryInput,
   UserDataExport,
@@ -168,6 +170,17 @@ export class TimefairyClient {
     });
   }
 
+  getWorkHoursPreferences() {
+    return this.request<WorkHoursPreferences>("/api/auth/me/work-hours");
+  }
+
+  updateWorkHoursPreferences(input: UpdateWorkHoursPreferencesInput) {
+    return this.request<WorkHoursPreferences>("/api/auth/me/work-hours", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
+  }
+
   exportUserData() {
     return this.request<UserDataExport>("/api/user-data/export");
   }
@@ -319,6 +332,13 @@ export class TimefairyClient {
     return this.request<TaskWithRelations>(`/api/tasks/${id}`, {
       method: "PATCH",
       body: JSON.stringify(input),
+    });
+  }
+
+  reorderTasks(taskIds: string[]) {
+    return this.request<{ ok: boolean }>("/api/tasks/reorder", {
+      method: "POST",
+      body: JSON.stringify({ taskIds }),
     });
   }
 

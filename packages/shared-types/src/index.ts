@@ -1,6 +1,7 @@
 export * from "./enums";
 export * from "./auth";
 export * from "./settings";
+export * from "./work-hours";
 export * from "./user";
 export * from "./client";
 export * from "./project";

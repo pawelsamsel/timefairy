@@ -5,10 +5,12 @@ import {
   ConflictException,
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
+import { Prisma } from "@prisma/client";
 import * as bcrypt from "bcrypt";
 import { PrismaService } from "../prisma/prisma.service";
 import { LanesHelperService } from "../common/lanes-helper.service";
 import { ChangeOwnPasswordDto, LoginDto, RegisterDto } from "./auth.dto";
+import { UpdateWorkHoursPreferencesDto } from "./work-hours.dto";
 import { AuthPayload } from "../common/decorators";
 
 @Injectable()
@@ -129,5 +131,52 @@ export class AuthService {
       role: user.role,
       timezone: user.timezone,
     };
+  }
+
+  private serializeWorkHoursPreferences(user: {
+    dailyWorkHours: Prisma.Decimal;
+    includeSaturdays: boolean;
+    includeSundays: boolean;
+    onlyBillableProjects: boolean;
+    trackTimeMode: "SINGLE" | "MULTI" | "ASK";
+    minimalTaskMinutes: number;
+    useTimeGrid: boolean;
+  }) {
+    return {
+      dailyWorkHours: user.dailyWorkHours.toNumber(),
+      includeSaturdays: user.includeSaturdays,
+      includeSundays: user.includeSundays,
+      onlyBillableProjects: user.onlyBillableProjects,
+      trackTimeMode: user.trackTimeMode,
+      minimalTaskMinutes: user.minimalTaskMinutes,
+      useTimeGrid: user.useTimeGrid,
+    };
+  }
+
+  async getWorkHoursPreferences(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+    return this.serializeWorkHoursPreferences(user);
+  }
+
+  async updateWorkHoursPreferences(userId: string, dto: UpdateWorkHoursPreferencesDto) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        dailyWorkHours:
+          dto.dailyWorkHours != null ? new Prisma.Decimal(dto.dailyWorkHours) : undefined,
+        includeSaturdays: dto.includeSaturdays,
+        includeSundays: dto.includeSundays,
+        onlyBillableProjects: dto.onlyBillableProjects,
+        trackTimeMode: dto.trackTimeMode,
+        minimalTaskMinutes: dto.minimalTaskMinutes,
+        useTimeGrid: dto.useTimeGrid,
+      },
+    });
+
+    return this.serializeWorkHoursPreferences(updated);
   }
 }

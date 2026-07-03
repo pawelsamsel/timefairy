@@ -46,7 +46,7 @@ const DialogContent = React.forwardRef<
       )}
       {...props}
     >
-      <div className="px-6 pt-6 pb-0">{children}</div>
+      <div className="px-4 pt-4 pb-0">{children}</div>
       <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-imperial-blue/70 transition-colors hover:bg-imperial-blue-50 hover:text-imperial-blue focus:outline-none focus:ring-2 focus:ring-steel-azure/50">
         <X className="h-4 w-4" />
         <span className="sr-only">Close</span>
@@ -71,7 +71,7 @@ const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
   <div
     className={cn(
       "dialog-footer flex flex-col-reverse gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end",
-      "-mx-6 mt-6 px-6 py-4",
+      "-mx-4 mt-4 px-4 py-3",
       "bg-imperial-blue-50 border-t border-imperial-blue-200",
       "rounded-b-md",
       "sm:gap-3 [&_button]:min-w-[5.5rem]",
@@ -87,7 +87,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn("text-lg font-semibold leading-none tracking-tight text-imperial-blue", className)}
+    className={cn("text-base font-semibold leading-none tracking-tight text-imperial-blue", className)}
     {...props}
   />
 ));

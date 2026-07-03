@@ -20,6 +20,11 @@ export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export const updateTaskSchema = createTaskSchema.partial();
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 
+export const reorderTasksSchema = z.object({
+  taskIds: z.array(z.string().uuid()).min(1),
+});
+export type ReorderTasksInput = z.infer<typeof reorderTasksSchema>;
+
 export const taskSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid(),
@@ -29,6 +34,7 @@ export const taskSchema = z.object({
   externalUrl: z.string().nullable(),
   status: z.enum([TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE]),
   note: z.string().nullable(),
+  sortOrder: z.number().int(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

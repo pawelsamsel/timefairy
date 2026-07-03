@@ -139,18 +139,20 @@ export function getHourSegments(hour: number, occupied: MinuteRange[]): DropSlot
   return segments;
 }
 
-export function getHourDropLayout(hour: number, occupied: MinuteRange[]): HourDropLayout {
+export function getHourDropLayout(
+  hour: number,
+  occupied: MinuteRange[],
+  gridStepMinutes = 15,
+): HourDropLayout {
   const base = hour * 60;
   const templateHalf: TimelineDropSlot[] = [
     { startMinutes: base, durationMinutes: 30 },
     { startMinutes: base + 30, durationMinutes: 30 },
   ];
-  const templateQuarter: TimelineDropSlot[] = [
-    { startMinutes: base, durationMinutes: 15 },
-    { startMinutes: base + 15, durationMinutes: 15 },
-    { startMinutes: base + 30, durationMinutes: 15 },
-    { startMinutes: base + 45, durationMinutes: 15 },
-  ];
+  const templateQuarter: TimelineDropSlot[] = [];
+  for (let offset = 0; offset < 60; offset += gridStepMinutes) {
+    templateQuarter.push({ startMinutes: base + offset, durationMinutes: gridStepMinutes });
+  }
 
   return {
     hourSegments: getHourSegments(hour, occupied),
@@ -210,11 +212,11 @@ export function findFreeSegmentContainingMinute(
   );
 }
 
-export function slotDefaultDurationMinutes(slot: TimelineDropSlot): number {
-  return Math.max(
-    TIMELINE_MIN_ENTRY_MINUTES,
-    Math.min(slot.durationMinutes, 60),
-  );
+export function slotDefaultDurationMinutes(
+  slot: TimelineDropSlot,
+  minEntryMinutes = TIMELINE_MIN_ENTRY_MINUTES,
+): number {
+  return Math.max(minEntryMinutes, Math.min(slot.durationMinutes, 60));
 }
 
 export function slotToFormDatetimeLocal(
@@ -235,7 +237,12 @@ export function slotToFormDatetimeLocal(
   return { startAt: toLocal(startAt), endAt: toLocal(endAt) };
 }
 
-export function getExpandedDropOptions(hour: number, occupied: MinuteRange[]): TimelineDropSlot[] {
+export function getExpandedDropOptions(
+  hour: number,
+  occupied: MinuteRange[],
+  gridStepMinutes = 15,
+  useTimeGrid = false,
+): TimelineDropSlot[] {
   const free = getFreeSlotsInHour(hour, occupied);
   const seen = new Set<string>();
   const options: TimelineDropSlot[] = [];
@@ -249,6 +256,20 @@ export function getExpandedDropOptions(hour: number, occupied: MinuteRange[]): T
 
   for (const slot of free) {
     add(slot);
+
+    if (useTimeGrid) {
+      for (
+        let start = slot.startMinutes;
+        start < slot.startMinutes + slot.durationMinutes;
+        start += gridStepMinutes
+      ) {
+        const remaining = slot.startMinutes + slot.durationMinutes - start;
+        if (remaining >= gridStepMinutes) {
+          add({ startMinutes: start, durationMinutes: gridStepMinutes });
+        }
+      }
+      continue;
+    }
 
     if (slot.durationMinutes >= 30) {
       for (
@@ -443,16 +464,28 @@ export const TIMELINE_SNAP_MINUTES = 15;
 export const TIMELINE_MINUTES_MIN = TIMELINE_START_HOUR * 60;
 export const TIMELINE_MINUTES_MAX = TIMELINE_END_HOUR * 60;
 
-export function snapTimelineMinutes(minutes: number): number {
-  return Math.round(minutes / TIMELINE_SNAP_MINUTES) * TIMELINE_SNAP_MINUTES;
+export function snapTimelineMinutes(minutes: number, gridStepMinutes = TIMELINE_SNAP_MINUTES): number {
+  if (gridStepMinutes <= 1) return minutes;
+  return Math.round(minutes / gridStepMinutes) * gridStepMinutes;
 }
 
-export function clampEntryMinuteRange(range: MinuteRange): MinuteRange | null {
-  let start = snapTimelineMinutes(range.start);
-  let end = snapTimelineMinutes(range.end);
+export type ClampEntryRangeOptions = {
+  gridStepMinutes?: number;
+  minEntryMinutes?: number;
+};
 
-  if (end - start < TIMELINE_MIN_ENTRY_MINUTES) {
-    end = start + TIMELINE_MIN_ENTRY_MINUTES;
+export function clampEntryMinuteRange(
+  range: MinuteRange,
+  options: ClampEntryRangeOptions = {},
+): MinuteRange | null {
+  const gridStepMinutes = options.gridStepMinutes ?? TIMELINE_SNAP_MINUTES;
+  const minEntryMinutes = options.minEntryMinutes ?? TIMELINE_MIN_ENTRY_MINUTES;
+
+  let start = snapTimelineMinutes(range.start, gridStepMinutes);
+  let end = snapTimelineMinutes(range.end, gridStepMinutes);
+
+  if (end - start < minEntryMinutes) {
+    end = start + minEntryMinutes;
   }
 
   if (start < TIMELINE_MINUTES_MIN) {
@@ -467,7 +500,7 @@ export function clampEntryMinuteRange(range: MinuteRange): MinuteRange | null {
   }
 
   if (start < TIMELINE_MINUTES_MIN || end > TIMELINE_MINUTES_MAX) return null;
-  if (end - start < TIMELINE_MIN_ENTRY_MINUTES) return null;
+  if (end - start < minEntryMinutes) return null;
   return { start, end };
 }
 

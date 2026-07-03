@@ -14,9 +14,10 @@ type LogoProps = {
   showText?: boolean;
   subtitle?: string;
   className?: string;
+  title?: string;
 };
 
-export function Logo({ to, size = "md", showText = true, subtitle, className }: LogoProps) {
+export function Logo({ to, size = "md", showText = true, subtitle, className, title }: LogoProps) {
   const px = sizePx[size];
   const content = (
     <div className={cn("flex items-center gap-1 min-w-0", className)}>
@@ -43,11 +44,11 @@ export function Logo({ to, size = "md", showText = true, subtitle, className }: 
 
   if (to) {
     return (
-      <Link to={to} className="hover:opacity-90 transition-opacity">
+      <Link to={to} className="hover:opacity-90 transition-opacity" title={title}>
         {content}
       </Link>
     );
   }
 
-  return content;
+  return <div title={title}>{content}</div>;
 }

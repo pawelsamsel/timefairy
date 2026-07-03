@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { AuthGuard } from "@nestjs/passport";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import { TasksService } from "./tasks.service";
-import { CreateTaskDto, UpdateTaskDto } from "./tasks.dto";
+import { CreateTaskDto, ReorderTasksDto, UpdateTaskDto } from "./tasks.dto";
 import { CurrentUser, RequestUser } from "../common/decorators";
 
 @ApiTags("tasks")
@@ -29,6 +29,11 @@ export class TasksController {
   @Post()
   create(@CurrentUser() user: RequestUser, @Body() dto: CreateTaskDto) {
     return this.tasksService.create(user.sub, dto);
+  }
+
+  @Post("reorder")
+  reorder(@CurrentUser() user: RequestUser, @Body() dto: ReorderTasksDto) {
+    return this.tasksService.reorder(user.sub, dto.taskIds);
   }
 
   @Patch(":id")
