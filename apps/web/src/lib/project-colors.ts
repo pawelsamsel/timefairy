@@ -31,3 +31,13 @@ export function entryDisplayColor(entry: {
 }): string {
   return entry.project?.color ?? entry.lane?.color ?? "var(--color-steel-azure)";
 }
+
+export function taskProjectAccentColor(
+  task: { projectId: string; project?: { color?: string } | null },
+  projectColorById?: ReadonlyMap<string, string>,
+): string {
+  if (task.project?.color) return task.project.color;
+  const fromProjectList = projectColorById?.get(task.projectId);
+  if (fromProjectList) return fromProjectList;
+  return DEFAULT_PROJECT_COLOR;
+}

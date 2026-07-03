@@ -10,6 +10,7 @@ import { LanesModule } from "./lanes/lanes.module";
 import { TimeEntriesModule } from "./time-entries/time-entries.module";
 import { HealthModule } from "./health/health.module";
 import { UserDataModule } from "./user-data/user-data.module";
+import { DayLogsModule } from "./day-logs/day-logs.module";
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UserDataModule } from "./user-data/user-data.module";
     LanesModule,
     TimeEntriesModule,
     UserDataModule,
+    DayLogsModule,
     HealthModule,
   ],
 })

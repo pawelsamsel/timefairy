@@ -11,6 +11,7 @@ timefairy-export-*.json
 *.log
 .DS_Store
 coverage/
+.backups/
 apps/api/prisma/*.db
 target/
 apps/desktop/src-tauri/target/

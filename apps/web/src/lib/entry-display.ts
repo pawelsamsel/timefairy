@@ -20,13 +20,22 @@ export function dayViewDisplayCustomized(display: DayViewDisplayOptions): boolea
   );
 }
 
+export function resolveEntryProjectId(entry: TimeEntryWithRelations): string | null {
+  if (entry.projectId) return entry.projectId;
+  if (entry.project?.id) return entry.project.id;
+  if (entry.task?.projectId) return entry.task.projectId;
+  return null;
+}
+
 export function resolveEntryClientId(
   entry: TimeEntryWithRelations,
   projectClientIds: Map<string, string>,
 ): string | null {
   if (entry.clientId) return entry.clientId;
   if (entry.client?.id) return entry.client.id;
-  if (entry.projectId) return projectClientIds.get(entry.projectId) ?? null;
+  if (entry.task?.clientId) return entry.task.clientId;
+  const projectId = resolveEntryProjectId(entry);
+  if (projectId) return projectClientIds.get(projectId) ?? null;
   return null;
 }
 

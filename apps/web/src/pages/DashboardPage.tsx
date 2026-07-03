@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { CalendarDays, ChevronLeft, ChevronRight, List, ListTodo, Plus } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, List, ListTodo, NotebookPen, Plus } from "lucide-react";
 import { DayViewToolbar } from "@/components/day/day-view-toolbar";
 import { EntrySource, LaneType, TrackTimeMode, type TaskWithRelations, type TimeEntryWithRelations } from "@timefairy/shared-types";
 import { api } from "../lib/api";
@@ -12,6 +12,11 @@ import {
   formatTimeRange,
   toDateInputValue,
 } from "@/lib/datetime";
+import {
+  entryMinutesOnDay,
+  entryOverlapsDay,
+  extendedDayFetchRange,
+} from "@/lib/entry-time-range";
 import { dropSlotToIsoRange, slotToFormDatetimeLocal, type TimelineDropSlot } from "@/lib/timeline";
 import { DayTaskPanel } from "@/components/day/day-task-panel";
 import {
@@ -20,6 +25,7 @@ import {
   type TaskDragPayload,
 } from "@/components/day/day-timeline";
 import { DayViewSummary } from "@/components/day/day-view-summary";
+import { DayLogPanel, DayLogDateSummary } from "@/components/day/day-log-panel";
 import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { DelayedTooltip } from "@/components/ui/delayed-tooltip";
@@ -77,6 +83,7 @@ const DAY_VIEW_MODE_KEY = "timefairy-day-view-mode";
 const DAY_VIEW_DATE_KEY = "timefairy-view-date:dashboard";
 const DAY_VIEW_MINI_CALENDAR_KEY = "timefairy-day-view-mini-calendar";
 const DAY_VIEW_TASKS_PANEL_KEY = "timefairy-day-view-tasks-panel";
+const DAY_VIEW_DAY_LOG_PANEL_KEY = "timefairy-day-view-day-log-panel";
 
 function loadDayViewMode(): DayViewMode {
   const stored = localStorage.getItem(DAY_VIEW_MODE_KEY);
@@ -92,6 +99,10 @@ function loadTasksPanelVisible(): boolean {
   return stored !== "false";
 }
 
+function loadDayLogPanelVisible(): boolean {
+  return localStorage.getItem(DAY_VIEW_DAY_LOG_PANEL_KEY) === "true";
+}
+
 export function DashboardPage() {
   const qc = useQueryClient();
   const timeEntryUndo = useTimeEntryUndo();
@@ -103,13 +114,14 @@ export function DashboardPage() {
   const [viewMode, setViewMode] = useState<DayViewMode>(() => loadDayViewMode());
   const [miniCalendarVisible, setMiniCalendarVisible] = useState(() => loadMiniCalendarVisible());
   const [tasksPanelVisible, setTasksPanelVisible] = useState(() => loadTasksPanelVisible());
+  const [dayLogPanelVisible, setDayLogPanelVisible] = useState(() => loadDayLogPanelVisible());
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoomLevel>(() => loadTimelineZoomLevel());
   const [isDraggingTask, setIsDraggingTask] = useState(false);
   const [editEntry, setEditEntry] = useState<TimeEntryWithRelations | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createInitial, setCreateInitial] = useState<TimeEntryCreateInitial>({});
 
-  const dayRange = useMemo(() => dayBoundsLocal(selectedDate), [selectedDate]);
+  const dayRange = useMemo(() => extendedDayFetchRange(selectedDate), [selectedDate]);
 
   const lanesQuery = useQuery({ queryKey: ["lanes"], queryFn: () => api.listLanes() });
   const projectsQuery = useQuery({ queryKey: ["projects"], queryFn: () => api.listProjects() });
@@ -133,9 +145,13 @@ export function DashboardPage() {
     () => new Map(clients.map((c) => [c.id, c.name])),
     [clients],
   );
+  const dayEntries = useMemo(
+    () => allEntries.filter((entry) => entryOverlapsDay(entry, selectedDate)),
+    [allEntries, selectedDate],
+  );
   const entries = useMemo(
-    () => filterDayViewEntries(allEntries, filters, projectClientIds),
-    [allEntries, filters, projectClientIds],
+    () => filterDayViewEntries(dayEntries, filters, projectClientIds),
+    [dayEntries, filters, projectClientIds],
   );
   const [dropError, setDropError] = useState("");
   const [scheduleError, setScheduleError] = useState("");
@@ -154,6 +170,10 @@ export function DashboardPage() {
   useEffect(() => {
     localStorage.setItem(DAY_VIEW_TASKS_PANEL_KEY, String(tasksPanelVisible));
   }, [tasksPanelVisible]);
+
+  useEffect(() => {
+    localStorage.setItem(DAY_VIEW_DAY_LOG_PANEL_KEY, String(dayLogPanelVisible));
+  }, [dayLogPanelVisible]);
 
   useEffect(() => {
     saveTimelineZoomLevel(timelineZoom);
@@ -179,12 +199,13 @@ export function DashboardPage() {
   }, [lanes, projects, clients, setFilters]);
 
   const totalMinutes = useMemo(
-    () => entries.reduce((sum, e) => sum + (e.durationMinutes ?? 0), 0),
-    [entries],
+    () => entries.reduce((sum, entry) => sum + entryMinutesOnDay(entry, selectedDate), 0),
+    [entries, selectedDate],
   );
   const allTotalMinutes = useMemo(
-    () => allEntries.reduce((sum, e) => sum + (e.durationMinutes ?? 0), 0),
-    [allEntries],
+    () =>
+      dayEntries.reduce((sum, entry) => sum + entryMinutesOnDay(entry, selectedDate), 0),
+    [dayEntries, selectedDate],
   );
   const filtersActive = dayViewFiltersActive(filters);
   const workHoursPreferences = useMemo(
@@ -465,15 +486,44 @@ export function DashboardPage() {
           "Cannot load data",
         )
       : null;
+  const today = useMemo(() => toDateInputValue(new Date()), []);
+  const isTodaySelected = selectedDate === today;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-xl font-semibold tracking-tight">Day view</h1>
-          <p className="text-sm text-muted-foreground">{formatDayLabel(selectedDate)}</p>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            <span>{formatDayLabel(selectedDate)}</span>
+            <DayLogDateSummary selectedDate={selectedDate} />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <DelayedTooltip label={miniCalendarVisible ? "Hide mini calendar" : "Mini calendar"}>
+            <Button
+              type="button"
+              size="icon"
+              variant={miniCalendarVisible ? "default" : "outline"}
+              onClick={() => setMiniCalendarVisible((visible) => !visible)}
+              aria-pressed={miniCalendarVisible}
+              aria-label={miniCalendarVisible ? "Hide mini calendar" : "Show mini calendar"}
+            >
+              <CalendarDays className="h-4 w-4" />
+            </Button>
+          </DelayedTooltip>
+          <DelayedTooltip label={dayLogPanelVisible ? "Hide day note" : "Day note"}>
+            <Button
+              type="button"
+              size="icon"
+              variant={dayLogPanelVisible ? "default" : "outline"}
+              onClick={() => setDayLogPanelVisible((visible) => !visible)}
+              aria-pressed={dayLogPanelVisible}
+              aria-label={dayLogPanelVisible ? "Hide day note panel" : "Show day note panel"}
+            >
+              <NotebookPen className="h-4 w-4" />
+            </Button>
+          </DelayedTooltip>
           <div className="flex gap-1 rounded-md border bg-background p-0.5">
             <DelayedTooltip label="List">
               <Button
@@ -500,18 +550,6 @@ export function DashboardPage() {
               </Button>
             </DelayedTooltip>
           </div>
-          <DelayedTooltip label={miniCalendarVisible ? "Hide mini calendar" : "Mini calendar"}>
-            <Button
-              type="button"
-              size="icon"
-              variant={miniCalendarVisible ? "default" : "outline"}
-              onClick={() => setMiniCalendarVisible((visible) => !visible)}
-              aria-pressed={miniCalendarVisible}
-              aria-label={miniCalendarVisible ? "Hide mini calendar" : "Show mini calendar"}
-            >
-              <CalendarDays className="h-4 w-4" />
-            </Button>
-          </DelayedTooltip>
           <DelayedTooltip label={tasksPanelVisible ? "Hide tasks" : "Tasks"}>
             <Button
               type="button"
@@ -548,7 +586,17 @@ export function DashboardPage() {
           >
             <ChevronRight className="h-4 w-4" />
           </Button>
-          <Button type="button" variant="secondary" onClick={() => setSelectedDate(toDateInputValue(new Date()))}>
+          <Button
+            type="button"
+            variant="outline"
+            aria-pressed={isTodaySelected}
+            className={cn(
+              isTodaySelected
+                ? "border-school-bus-yellow/60 bg-school-bus-yellow text-school-bus-yellow-foreground hover:bg-school-bus-yellow/90"
+                : "border-transparent bg-secondary text-secondary-foreground hover:bg-secondary/80",
+            )}
+            onClick={() => setSelectedDate(today)}
+          >
             Today
           </Button>
           <DayViewToolbar
@@ -597,16 +645,18 @@ export function DashboardPage() {
         </p>
       )}
 
-      {filtersActive && entries.length === 0 && allEntries.length > 0 && (
+      {filtersActive && entries.length === 0 && dayEntries.length > 0 && (
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-950">
           <span>
-            Filters hide all {allEntries.length} entries on {formatDayLabel(selectedDate).toLowerCase()}.
+            Filters hide all {dayEntries.length} entries on {formatDayLabel(selectedDate).toLowerCase()}.
           </span>
           <Button type="button" size="sm" variant="outline" onClick={() => setFilters(EMPTY_DAY_VIEW_FILTERS)}>
             Clear filters
           </Button>
         </div>
       )}
+
+      {dayLogPanelVisible && <DayLogPanel selectedDate={selectedDate} />}
 
       <div className="flex min-h-0 flex-1 gap-4">
         {miniCalendarVisible && (
@@ -625,7 +675,7 @@ export function DashboardPage() {
         <div className="flex min-h-0 flex-1 flex-row gap-4">
           <ListDayLayout
             entries={entries}
-            allEntryCount={allEntries.length}
+            allEntryCount={dayEntries.length}
             totalMinutes={totalMinutes}
             filtersActive={filtersActive}
             display={display}

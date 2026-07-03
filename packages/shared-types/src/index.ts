@@ -8,4 +8,5 @@ export * from "./project";
 export * from "./task";
 export * from "./lane";
 export * from "./time-entry";
+export * from "./day-log";
 export * from "./user-data";

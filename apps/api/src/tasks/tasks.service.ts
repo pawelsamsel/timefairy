@@ -8,7 +8,7 @@ import {
 } from "./task-schedule.util";
 
 const taskInclude = {
-  project: { select: { id: true, name: true } },
+  project: { select: { id: true, name: true, color: true } },
   client: { select: { id: true, name: true } },
   _count: { select: { timeEntries: true } },
 } as const;
@@ -51,7 +51,7 @@ export class TasksService {
           take: 100,
           include: {
             lane: { select: { id: true, name: true, color: true } },
-            project: { select: { id: true, name: true } },
+            project: { select: { id: true, name: true, color: true } },
           },
         },
       },

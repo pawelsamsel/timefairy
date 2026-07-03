@@ -4,6 +4,7 @@ import {
   DEFAULT_DAY_VIEW_DISPLAY,
   type DayViewDisplayOptions,
   resolveEntryClientId,
+  resolveEntryProjectId,
 } from "./entry-display";
 
 export type DayViewFilters = {
@@ -101,7 +102,8 @@ export function filterDayViewEntries(
       return false;
     }
     if (filters.projectIds.length > 0) {
-      if (!entry.projectId || !filters.projectIds.includes(entry.projectId)) {
+      const projectId = resolveEntryProjectId(entry);
+      if (!projectId || !filters.projectIds.includes(projectId)) {
         return false;
       }
     }

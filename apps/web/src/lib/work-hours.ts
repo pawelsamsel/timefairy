@@ -56,9 +56,11 @@ export function resolveDayStatus(
   date: string,
   summary: { status: "met" | "below" } | undefined,
   prefs: WorkHoursPreferences,
+  dayOffOverride?: boolean | null,
 ): "none" | "below" | "met" | "off" {
   const hasEntries = summary != null;
-  if (!isWorkDay(date, prefs) && !hasEntries) return "off";
+  if (dayOffOverride === true && !hasEntries) return "off";
+  if (!isWorkDay(date, prefs) && !hasEntries && dayOffOverride !== false) return "off";
   if (!hasEntries) return "none";
   return summary.status;
 }

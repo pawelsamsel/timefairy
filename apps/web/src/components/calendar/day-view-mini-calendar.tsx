@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api } from "@/lib/api";
+import { extendedMonthFetchRange } from "@/lib/entry-time-range";
 import { filterDayViewEntries, type DayViewFilters } from "@/lib/day-view-preferences";
 import {
   buildMonthGrid,
@@ -17,6 +18,7 @@ import {
   summarizeEntriesByDay,
 } from "@/lib/month-calendar";
 import { filterBillableEntries } from "@/lib/work-hours";
+import { dayLogsByDate } from "@/lib/day-logs";
 
 type DayViewMiniCalendarProps = {
   selectedDate: string;
@@ -45,6 +47,10 @@ export function DayViewMiniCalendar({
   }, [selectedParts.year, selectedParts.monthIndex]);
 
   const range = useMemo(() => monthBounds(year, monthIndex), [year, monthIndex]);
+  const fetchRange = useMemo(
+    () => extendedMonthFetchRange(range.fromDate, range.toDate),
+    [range.fromDate, range.toDate],
+  );
   const gridDates = useMemo(() => buildMonthGrid(year, monthIndex), [year, monthIndex]);
 
   const projectsQuery = useQuery({
@@ -54,8 +60,18 @@ export function DayViewMiniCalendar({
 
   const entriesQuery = useQuery({
     queryKey: ["time-entries", "mini-calendar", range.fromDate, range.toDate],
-    queryFn: () => api.listTimeEntries({ from: range.from, to: range.to }),
+    queryFn: () => api.listTimeEntries({ from: fetchRange.from, to: fetchRange.to }),
   });
+
+  const dayLogsQuery = useQuery({
+    queryKey: ["day-logs", range.fromDate, range.toDate],
+    queryFn: () => api.listDayLogs({ from: range.fromDate, to: range.toDate }),
+  });
+
+  const dayLogsMap = useMemo(
+    () => dayLogsByDate(dayLogsQuery.data ?? []),
+    [dayLogsQuery.data],
+  );
 
   const filteredEntries = useMemo(() => {
     const billableFiltered = filterBillableEntries(
@@ -83,8 +99,8 @@ export function DayViewMiniCalendar({
   );
 
   return (
-    <Card className="flex h-full min-h-0 w-[14rem] shrink-0 flex-col overflow-hidden self-stretch">
-      <CardHeader className="shrink-0 space-y-2 px-3 pb-2 pt-3">
+    <Card className="flex h-full min-h-0 w-[17rem] shrink-0 flex-col overflow-hidden self-stretch">
+      <CardHeader className="shrink-0 space-y-2 px-4 pb-2 pt-4">
         <div className="flex items-center justify-between gap-1">
           <div className="min-w-0">
             <CardTitle className="truncate text-sm font-medium">
@@ -128,7 +144,7 @@ export function DayViewMiniCalendar({
           </div>
         </div>
       </CardHeader>
-      <CardContent className="min-h-0 flex-1 overflow-y-auto px-2 pb-3 pt-0">
+      <CardContent className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-0">
         <MonthCalendar
           monthIndex={monthIndex}
           gridDates={gridDates}
@@ -138,9 +154,10 @@ export function DayViewMiniCalendar({
           compact
           showLegend
           onDateSelect={onSelectDate}
+          dayLogsByDate={dayLogsMap}
         />
       </CardContent>
-      <div className="shrink-0 border-t border-border/30 px-3 py-2.5">
+      <div className="shrink-0 border-t border-border/30 px-4 py-2.5 pb-4">
         <div className="flex items-baseline justify-between gap-2 text-sm">
           <span className="text-muted-foreground">Month total</span>
           <span className="font-semibold tabular-nums tracking-tight">

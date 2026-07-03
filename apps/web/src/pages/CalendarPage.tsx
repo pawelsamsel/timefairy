@@ -19,6 +19,7 @@ import {
 } from "@/lib/month-calendar";
 import { filterBillableEntries, fallbackWorkHoursPreferences } from "@/lib/work-hours";
 import { useWorkHoursPreferences } from "@/lib/use-work-hours-preferences";
+import { dayLogsByDate } from "@/lib/day-logs";
 
 export function CalendarPage() {
   const [searchParams] = useSearchParams();
@@ -42,6 +43,16 @@ export function CalendarPage() {
     queryKey: ["time-entries", "calendar", range.fromDate, range.toDate],
     queryFn: () => api.listTimeEntries({ from: range.from, to: range.to }),
   });
+
+  const dayLogsQuery = useQuery({
+    queryKey: ["day-logs", range.fromDate, range.toDate],
+    queryFn: () => api.listDayLogs({ from: range.fromDate, to: range.toDate }),
+  });
+
+  const dayLogsMap = useMemo(
+    () => dayLogsByDate(dayLogsQuery.data ?? []),
+    [dayLogsQuery.data],
+  );
 
   const relevantEntries = useMemo(
     () =>
@@ -75,14 +86,15 @@ export function CalendarPage() {
   }
 
   const loadError =
-    entriesQuery.isError || projectsQuery.isError || prefsQuery.isError
+    entriesQuery.isError || projectsQuery.isError || prefsQuery.isError || dayLogsQuery.isError
       ? getErrorMessage(
-          entriesQuery.error ?? projectsQuery.error ?? prefsQuery.error,
+          entriesQuery.error ?? projectsQuery.error ?? prefsQuery.error ?? dayLogsQuery.error,
           "Cannot load calendar data",
         )
       : null;
 
-  const loading = entriesQuery.isLoading || projectsQuery.isLoading || prefsQuery.isLoading;
+  const loading =
+    entriesQuery.isLoading || projectsQuery.isLoading || prefsQuery.isLoading || dayLogsQuery.isLoading;
 
   return (
     <div className="space-y-6">
@@ -158,6 +170,7 @@ export function CalendarPage() {
             daySummaries={daySummaries}
             workHoursPreferences={workHoursPreferences}
             selectedDate={selectedDate}
+            dayLogsByDate={dayLogsMap}
           />
         </CardContent>
       </Card>

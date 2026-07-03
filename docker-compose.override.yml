@@ -1,0 +1,12 @@
+services:
+  postgres:
+    ports:
+      - "5434:5432"
+
+  api:
+    profiles:
+      - docker-stack
+
+  web:
+    profiles:
+      - docker-stack

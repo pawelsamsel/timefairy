@@ -1,6 +1,7 @@
 import type { TimeEntryWithRelations } from "@timefairy/shared-types";
 import type { WorkHoursPreferences } from "@timefairy/shared-types";
 import { addDays, toDateInputValue } from "./datetime";
+import { entryAffectedDates, entryLocalDateKey, entryMinutesOnDay } from "./entry-time-range";
 import { isWorkDay } from "./work-hours";
 
 export type DayLogStatus = "none" | "below" | "met" | "off";
@@ -12,10 +13,7 @@ export type DayLogSummary = {
   status: "below" | "met";
 };
 
-export function entryLocalDateKey(entry: TimeEntryWithRelations): string {
-  const iso = entry.startAt ?? entry.createdAt;
-  return toDateInputValue(new Date(iso));
-}
+export { entryLocalDateKey } from "./entry-time-range";
 
 export function monthBounds(year: number, monthIndex: number): { from: string; to: string; fromDate: string; toDate: string } {
   const firstDay = new Date(year, monthIndex, 1);
@@ -46,11 +44,14 @@ export function summarizeEntriesByDay(
   const byDay = new Map<string, { totalMinutes: number; entryCount: number }>();
 
   for (const entry of entries) {
-    const date = entryLocalDateKey(entry);
-    const current = byDay.get(date) ?? { totalMinutes: 0, entryCount: 0 };
-    current.totalMinutes += entry.durationMinutes ?? 0;
-    current.entryCount += 1;
-    byDay.set(date, current);
+    for (const date of entryAffectedDates(entry)) {
+      const minutes = entryMinutesOnDay(entry, date);
+      if (minutes <= 0) continue;
+      const current = byDay.get(date) ?? { totalMinutes: 0, entryCount: 0 };
+      current.totalMinutes += minutes;
+      current.entryCount += 1;
+      byDay.set(date, current);
+    }
   }
 
   const summaries = new Map<string, DayLogSummary>();
@@ -117,4 +118,10 @@ export function toMonthInputValue(year: number, monthIndex: number): string {
 export function dateParts(dateStr: string): { year: number; monthIndex: number } {
   const [year, month] = dateStr.split("-").map(Number);
   return { year, monthIndex: month - 1 };
+}
+
+export function isWeekend(dateStr: string): boolean {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const dayOfWeek = new Date(year, month - 1, day).getDay();
+  return dayOfWeek === 0 || dayOfWeek === 6;
 }

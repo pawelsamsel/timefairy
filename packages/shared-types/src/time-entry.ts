@@ -69,7 +69,13 @@ export type TimeEntryWithRelations = TimeEntry & {
   lane?: { id: string; name: string; type: string; color: string };
   project?: { id: string; name: string; color?: string } | null;
   client?: { id: string; name: string } | null;
-  task?: { id: string; title: string; externalId?: string | null } | null;
+  task?: {
+    id: string;
+    title: string;
+    externalId?: string | null;
+    projectId?: string;
+    clientId?: string | null;
+  } | null;
 };
 
 export const timeEntrySummarySchema = z.object({

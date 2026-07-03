@@ -79,22 +79,38 @@ export class TimeEntriesService {
     if (query.from || query.to) {
       const from = query.from ? new Date(query.from) : undefined;
       const to = query.to ? new Date(query.to) : undefined;
-      const startRange: Prisma.DateTimeNullableFilter = {};
       const createdRange: Prisma.DateTimeFilter = {};
-      if (from) {
-        startRange.gte = from;
-        createdRange.gte = from;
+      if (from) createdRange.gte = from;
+      if (to) createdRange.lte = to;
+
+      if (from && to) {
+        and.push({
+          OR: [
+            {
+              AND: [
+                { startAt: { not: null } },
+                { endAt: { not: null } },
+                { startAt: { lte: to } },
+                { endAt: { gte: from } },
+              ],
+            },
+            {
+              AND: [{ startAt: { not: null } }, { startAt: { gte: from, lte: to } }],
+            },
+            {
+              startAt: null,
+              createdAt: createdRange,
+            },
+          ],
+        });
+      } else {
+        const startRange: Prisma.DateTimeNullableFilter = {};
+        if (from) startRange.gte = from;
+        if (to) startRange.lte = to;
+        and.push({
+          OR: [{ startAt: startRange }, { startAt: null, createdAt: createdRange }],
+        });
       }
-      if (to) {
-        startRange.lte = to;
-        createdRange.lte = to;
-      }
-      and.push({
-        OR: [
-          { startAt: startRange },
-          { startAt: null, createdAt: createdRange },
-        ],
-      });
     }
 
     if (query.clientId) {
@@ -102,6 +118,12 @@ export class TimeEntriesService {
         OR: [
           { clientId: query.clientId },
           { clientId: null, project: { clientId: query.clientId } },
+          { clientId: null, projectId: null, task: { clientId: query.clientId } },
+          {
+            clientId: null,
+            projectId: null,
+            task: { clientId: null, project: { clientId: query.clientId } },
+          },
         ],
       });
     }
@@ -121,7 +143,7 @@ export class TimeEntriesService {
         lane: { select: { id: true, name: true, type: true, color: true } },
         project: { select: { id: true, name: true, color: true } },
         client: { select: { id: true, name: true } },
-        task: { select: { id: true, title: true, externalId: true } },
+        task: { select: { id: true, title: true, externalId: true, projectId: true, clientId: true } },
       },
       orderBy: [{ startAt: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
     });
@@ -161,7 +183,7 @@ export class TimeEntriesService {
         lane: { select: { id: true, name: true, type: true } },
         project: { select: { id: true, name: true, color: true } },
         client: { select: { id: true, name: true } },
-        task: { select: { id: true, title: true, externalId: true } },
+        task: { select: { id: true, title: true, externalId: true, projectId: true, clientId: true } },
       },
     });
   }

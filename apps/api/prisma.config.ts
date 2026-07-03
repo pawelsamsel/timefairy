@@ -5,6 +5,7 @@ import { defineConfig } from "prisma/config";
 const require = createRequire(import.meta.url);
 try {
   require("dotenv").config({ path: resolve(__dirname, "../../.env") });
+  require("dotenv").config({ path: resolve(__dirname, ".env.local"), override: true });
 } catch {
   // production Docker image: DATABASE_URL comes from container env
 }

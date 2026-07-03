@@ -35,6 +35,10 @@ import type {
   TimeEntrySummary,
   UpdateSystemSettingsInput,
   User,
+  DayLog,
+  DayLogState,
+  DayLogListQuery,
+  UpsertDayLogInput,
 } from "@timefairy/shared-types";
 
 export type AuthResponse = AuthTokens & { user: AuthUser };
@@ -405,6 +409,22 @@ export class TimefairyClient {
     if (params.projectId) qs.set("projectId", params.projectId);
     const q = qs.toString();
     return this.request<TimeEntrySummary[]>(`/api/time-entries/summary${q ? `?${q}` : ""}`);
+  }
+
+  listDayLogs(params: DayLogListQuery) {
+    const qs = new URLSearchParams({ from: params.from, to: params.to });
+    return this.request<DayLog[]>(`/api/day-logs?${qs.toString()}`);
+  }
+
+  getDayLog(date: string) {
+    return this.request<DayLogState>(`/api/day-logs/${date}`);
+  }
+
+  upsertDayLog(date: string, input: UpsertDayLogInput) {
+    return this.request<DayLogState>(`/api/day-logs/${date}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    });
   }
 }
 

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { WorkHoursPreferences } from "@timefairy/shared-types";
-import type { DayLogStatus, DayLogSummary } from "@/lib/month-calendar";
+import { isWeekend, type DayLogStatus, type DayLogSummary } from "@/lib/month-calendar";
 import { resolveDayStatus } from "@/lib/work-hours";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ type MonthCalendarProps = {
   compact?: boolean;
   showLegend?: boolean;
   onDateSelect?: (date: string) => void;
+  dayLogsByDate?: Map<string, { isDayOff: boolean | null }>;
 };
 
 function formatHours(totalMinutes: number, compact: boolean): string {
@@ -57,6 +58,7 @@ function DayCell({
   isSelected,
   compact,
   onDateSelect,
+  dayOffOverride,
 }: {
   date: string;
   monthIndex: number;
@@ -66,27 +68,36 @@ function DayCell({
   isSelected: boolean;
   compact: boolean;
   onDateSelect?: (date: string) => void;
+  dayOffOverride?: boolean | null;
 }) {
   const [, monthStr, dayStr] = date.split("-");
   const inMonth = Number(monthStr) - 1 === monthIndex;
+  const weekend = isWeekend(date);
   const hasEntries = (summary?.entryCount ?? 0) > 0;
-  const status = resolveDayStatus(date, summary, workHoursPreferences);
+  const isMarkedDayOff = dayOffOverride === true;
+  const status = resolveDayStatus(date, summary, workHoursPreferences, dayOffOverride);
 
   const className = cn(
     "group flex flex-col rounded-md border text-left transition-colors",
     compact
-      ? "min-h-[2.25rem] items-center justify-center gap-0.5 p-0.5"
+      ? cn(
+          "min-h-[2.25rem] items-center justify-center p-0.5",
+          inMonth && hasEntries ? (isMarkedDayOff ? "gap-1.5" : "gap-1") : "gap-0.5",
+        )
       : "min-h-[4.5rem] p-1.5 sm:min-h-[5.5rem] sm:p-2",
     statusClasses(status, inMonth, compact),
-    isSelected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-    isToday && !isSelected && "ring-1 ring-primary/50",
+    weekend && inMonth && "shadow-[inset_0_0_0_100vmax_rgba(128,128,128,0.045)]",
+    isSelected && "ring-2 ring-inset ring-primary",
+    isToday && !isSelected && "ring-1 ring-inset ring-primary/50",
   );
 
   const ariaLabel = hasEntries
-    ? `${date}: ${formatHours(summary!.totalMinutes, false)}, ${summary!.entryCount} entries`
+    ? `${date}: ${formatHours(summary!.totalMinutes, false)}, ${summary!.entryCount} entries${isMarkedDayOff ? ", day off" : ""}`
     : status === "off"
       ? `${date}: day off`
-      : `${date}: no entries`;
+      : isMarkedDayOff
+        ? `${date}: marked day off`
+        : `${date}: no entries`;
 
   const content = (
     <>
@@ -95,7 +106,11 @@ function DayCell({
           "font-medium tabular-nums",
           compact ? "text-[11px] leading-none" : "text-sm",
           inMonth ? "text-foreground" : "text-muted-foreground/50",
+          weekend && inMonth && "text-muted-foreground/75",
           status === "off" && inMonth && "text-muted-foreground/70",
+          isMarkedDayOff &&
+            inMonth &&
+            "underline decoration-emerald-500/80 decoration-2 underline-offset-[3px]",
         )}
       >
         {Number(dayStr)}
@@ -119,7 +134,12 @@ function DayCell({
       )}
 
       {compact && inMonth && hasEntries && (
-        <span className="text-[9px] font-semibold tabular-nums leading-none text-foreground/75">
+        <span
+          className={cn(
+            "text-[9px] font-semibold tabular-nums leading-none text-foreground/75",
+            isMarkedDayOff && "mt-0.5",
+          )}
+        >
           {formatHours(summary!.totalMinutes, true)}h
         </span>
       )}
@@ -162,6 +182,7 @@ export function MonthCalendar({
   compact = false,
   showLegend,
   onDateSelect,
+  dayLogsByDate,
 }: MonthCalendarProps) {
   const today = useMemo(() => {
     const now = new Date();
@@ -181,7 +202,13 @@ export function MonthCalendar({
         )}
       >
         {weekdayLabels.map((label, index) => (
-          <div key={`${label}-${index}`} className={compact ? "py-0.5" : "py-1"}>
+          <div
+            key={`${label}-${index}`}
+            className={cn(
+              compact ? "py-0.5" : "py-1",
+              (index === 5 || index === 6) && "text-muted-foreground/50",
+            )}
+          >
             {label}
           </div>
         ))}
@@ -199,6 +226,7 @@ export function MonthCalendar({
             isSelected={date === selectedDate}
             compact={compact}
             onDateSelect={onDateSelect}
+            dayOffOverride={dayLogsByDate?.get(date)?.isDayOff ?? null}
           />
         ))}
       </div>
@@ -244,6 +272,17 @@ export function MonthCalendar({
                 compact ? "h-2.5 w-2.5" : "h-3 w-3",
               )}
             />
+            Non-work day
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={cn(
+                "inline-flex items-center justify-center rounded-sm border border-transparent bg-muted/10 font-medium tabular-nums underline decoration-emerald-500/80 decoration-2 underline-offset-2",
+                compact ? "h-2.5 min-w-2.5 px-0.5 text-[8px] leading-none" : "h-3 min-w-3 px-0.5 text-[10px] leading-none",
+              )}
+            >
+              D
+            </span>
             Day off
           </span>
         </div>
