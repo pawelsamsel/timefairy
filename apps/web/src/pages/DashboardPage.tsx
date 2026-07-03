@@ -63,8 +63,13 @@ import { useAppDialog } from "@/lib/app-dialog";
 import {
   computeLoggedBlockIsoRange,
   elapsedMinutesFromStart,
-  resolveTimelineGridConfig,
 } from "@/lib/timeline-grid";
+import {
+  resolveTimelineViewConfig,
+  loadTimelineZoomLevel,
+  saveTimelineZoomLevel,
+  type TimelineZoomLevel,
+} from "@/lib/timeline-zoom";
 
 type DayViewMode = "list" | "calendar";
 
@@ -98,6 +103,7 @@ export function DashboardPage() {
   const [viewMode, setViewMode] = useState<DayViewMode>(() => loadDayViewMode());
   const [miniCalendarVisible, setMiniCalendarVisible] = useState(() => loadMiniCalendarVisible());
   const [tasksPanelVisible, setTasksPanelVisible] = useState(() => loadTasksPanelVisible());
+  const [timelineZoom, setTimelineZoom] = useState<TimelineZoomLevel>(() => loadTimelineZoomLevel());
   const [isDraggingTask, setIsDraggingTask] = useState(false);
   const [editEntry, setEditEntry] = useState<TimeEntryWithRelations | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -148,6 +154,10 @@ export function DashboardPage() {
   useEffect(() => {
     localStorage.setItem(DAY_VIEW_TASKS_PANEL_KEY, String(tasksPanelVisible));
   }, [tasksPanelVisible]);
+
+  useEffect(() => {
+    saveTimelineZoomLevel(timelineZoom);
+  }, [timelineZoom]);
 
   useEffect(() => {
     const dateParam = searchParams.get("date");
@@ -286,9 +296,9 @@ export function DashboardPage() {
     onError: (err) => setQuickLogError(getErrorMessage(err, "Failed to start work")),
   });
 
-  const timelineGridConfig = useMemo(
-    () => resolveTimelineGridConfig(workHoursPreferences),
-    [workHoursPreferences],
+  const timelineViewConfig = useMemo(
+    () => resolveTimelineViewConfig(workHoursPreferences, timelineZoom),
+    [workHoursPreferences, timelineZoom],
   );
 
   async function performQuickStop(
@@ -303,11 +313,11 @@ export function DashboardPage() {
       const elapsed = elapsedMinutesFromStart(activeStart.startAt, now);
       let enforceMinimum = options.enforceMinimum ?? false;
 
-      if (!options.skipPrompt && !enforceMinimum && elapsed < timelineGridConfig.minEntryMinutes) {
+      if (!options.skipPrompt && !enforceMinimum && elapsed < timelineViewConfig.minEntryMinutes) {
         const choice = await choose({
           title: "Session shorter than minimum",
-          description: `"${taskTitle}" ran for ${elapsed} min, below your ${timelineGridConfig.minEntryMinutes} min minimum. What should we do?`,
-          primaryLabel: `Log ${timelineGridConfig.minEntryMinutes} min`,
+          description: `"${taskTitle}" ran for ${elapsed} min, below your ${timelineViewConfig.minEntryMinutes} min minimum. What should we do?`,
+          primaryLabel: `Log ${timelineViewConfig.minEntryMinutes} min`,
           secondaryLabel: "Skip — don't log",
         });
         if (choice === null) return null;
@@ -324,7 +334,7 @@ export function DashboardPage() {
         selectedDate,
         activeStart.startAt,
         now,
-        timelineGridConfig,
+        timelineViewConfig,
         { enforceMinimum },
       );
 
@@ -625,6 +635,7 @@ export function DashboardPage() {
           />
           {tasksPanelVisible && (
             <DayTasksPanelCard
+              selectedDate={selectedDate}
               activeTaskIds={activeTaskIds}
               pendingTaskId={quickLogTaskId}
               onQuickToggle={handleQuickToggle}
@@ -643,9 +654,12 @@ export function DashboardPage() {
             clientNames={clientNames}
             projectClientIds={projectClientIds}
             isDraggingTask={isDraggingTask}
-            gridStepMinutes={timelineGridConfig.gridStepMinutes}
-            minEntryMinutes={timelineGridConfig.minEntryMinutes}
-            useTimeGrid={timelineGridConfig.useTimeGrid}
+            gridStepMinutes={timelineViewConfig.gridStepMinutes}
+            minEntryMinutes={timelineViewConfig.minEntryMinutes}
+            useTimeGrid={timelineViewConfig.useTimeGrid}
+            hourHeightPx={timelineViewConfig.hourHeightPx}
+            zoomLevel={timelineZoom}
+            onZoomLevelChange={setTimelineZoom}
             onTaskDrop={handleTaskDrop}
             onEntryClick={setEditEntry}
             onEntryCopy={(entry) => copyEntry.mutate(entry)}
@@ -654,6 +668,7 @@ export function DashboardPage() {
           />
           {tasksPanelVisible && (
             <DayTasksPanelCard
+              selectedDate={selectedDate}
               activeTaskIds={activeTaskIds}
               pendingTaskId={quickLogTaskId}
               onQuickToggle={handleQuickToggle}
@@ -692,12 +707,14 @@ export function DashboardPage() {
 }
 
 function DayTasksPanelCard({
+  selectedDate,
   activeTaskIds,
   pendingTaskId,
   onQuickToggle,
   onDragStart,
   onDragEnd,
 }: {
+  selectedDate: string;
   activeTaskIds: Set<string>;
   pendingTaskId?: string | null;
   onQuickToggle: (task: TaskWithRelations) => void;
@@ -708,6 +725,7 @@ function DayTasksPanelCard({
     <Card className="flex h-full min-h-0 w-[22rem] shrink-0 flex-col">
       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
         <DayTaskPanel
+          selectedDate={selectedDate}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
           activeTaskIds={activeTaskIds}

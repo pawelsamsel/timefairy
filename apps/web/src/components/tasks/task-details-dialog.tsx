@@ -6,6 +6,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { useAppDialog } from "@/lib/app-dialog";
 import { formatTimeRange } from "@/lib/datetime";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -73,6 +74,9 @@ export function TaskDetailsDialog({
   const [externalUrl, setExternalUrl] = useState("");
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.TODO);
   const [note, setNote] = useState("");
+  const [pinned, setPinned] = useState(false);
+  const [scheduledFrom, setScheduledFrom] = useState("");
+  const [scheduledTo, setScheduledTo] = useState("");
   const [error, setError] = useState("");
   const [nameEditing, setNameEditing] = useState(false);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +94,9 @@ export function TaskDetailsDialog({
       setExternalUrl(taskDetail.externalUrl ?? "");
       setStatus(taskDetail.status);
       setNote(taskDetail.note ?? "");
+      setPinned(taskDetail.pinned);
+      setScheduledFrom(taskDetail.scheduledFrom ?? "");
+      setScheduledTo(taskDetail.scheduledTo ?? "");
       setNameEditing(focusName);
     } else if (!isEdit) {
       setTitle("");
@@ -102,6 +109,9 @@ export function TaskDetailsDialog({
       setExternalUrl("");
       setStatus(TaskStatus.TODO);
       setNote("");
+      setPinned(false);
+      setScheduledFrom("");
+      setScheduledTo("");
       setNameEditing(true);
     }
     setError("");
@@ -132,8 +142,17 @@ export function TaskDetailsDialog({
         externalUrl: externalUrl.trim() || undefined,
         status,
         note: note.trim() || undefined,
+        pinned,
+        scheduledFrom: scheduledFrom || undefined,
+        scheduledTo: scheduledTo || undefined,
       };
-      if (isEdit) return api.updateTask(taskId!, payload);
+      if (isEdit) {
+        return api.updateTask(taskId!, {
+          ...payload,
+          scheduledFrom: scheduledFrom || null,
+          scheduledTo: scheduledTo || null,
+        });
+      }
       return api.createTask(payload);
     },
     onSuccess: () => {
@@ -176,6 +195,10 @@ export function TaskDetailsDialog({
       setError("Name is required.");
       return;
     }
+    if (scheduledFrom && scheduledTo && scheduledFrom > scheduledTo) {
+      setError("Start date must be on or before due date.");
+      return;
+    }
     save.mutate();
   }
 
@@ -184,7 +207,9 @@ export function TaskDetailsDialog({
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
-          <DialogDescription>Name, project, external link, status, and notes.</DialogDescription>
+          <DialogDescription>
+            Name, project, schedule, external link, status, and notes.
+          </DialogDescription>
         </DialogHeader>
 
         {isEdit && isLoading ? (
@@ -274,6 +299,49 @@ export function TaskDetailsDialog({
                 onChange={(e) => setExternalUrl(e.target.value)}
                 placeholder="https://…"
               />
+            </div>
+
+            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="task-pinned"
+                  checked={pinned}
+                  onCheckedChange={(checked) => setPinned(checked === true)}
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="task-pinned" className="cursor-pointer">
+                    Pinned
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Always show on the day view, regardless of schedule dates.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="task-from">Start date (optional)</Label>
+                  <Input
+                    id="task-from"
+                    type="date"
+                    value={scheduledFrom}
+                    max={scheduledTo || undefined}
+                    onChange={(e) => setScheduledFrom(e.target.value)}
+                    className="native-picker-input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="task-to">Due date (optional)</Label>
+                  <Input
+                    id="task-to"
+                    type="date"
+                    value={scheduledTo}
+                    min={scheduledFrom || undefined}
+                    onChange={(e) => setScheduledTo(e.target.value)}
+                    className="native-picker-input"
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">

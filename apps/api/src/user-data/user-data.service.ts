@@ -8,6 +8,7 @@ import {
   type UserDataImportResult,
 } from "@timefairy/shared-types";
 import { PrismaService } from "../prisma/prisma.service";
+import { formatTaskDateOnly, parseOptionalTaskDate } from "../tasks/task-schedule.util";
 
 type IdMap = Map<string, string>;
 
@@ -76,6 +77,9 @@ export class UserDataService {
         status: t.status,
         note: t.note,
         sortOrder: t.sortOrder,
+        pinned: t.pinned,
+        scheduledFrom: formatTaskDateOnly(t.scheduledFrom),
+        scheduledTo: formatTaskDateOnly(t.scheduledTo),
         createdAt: t.createdAt.toISOString(),
         updatedAt: t.updatedAt.toISOString(),
       })),
@@ -282,6 +286,9 @@ export class UserDataService {
           status: t.status,
           note: t.note,
           sortOrder: t.sortOrder ?? 0,
+          pinned: t.pinned ?? false,
+          scheduledFrom: t.scheduledFrom ? parseOptionalTaskDate(t.scheduledFrom) : null,
+          scheduledTo: t.scheduledTo ? parseOptionalTaskDate(t.scheduledTo) : null,
           createdAt: new Date(t.createdAt),
           updatedAt: new Date(t.updatedAt),
         };

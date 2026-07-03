@@ -12,6 +12,7 @@ type FreeSlotAddOverlayProps = {
   slot: TimelineDropSlot;
   minEntryMinutes?: number;
   gridStepMinutes?: number;
+  hourHeightPx?: number;
   onSelect: (slot: TimelineDropSlot, durationMinutes?: number) => void;
   onDismiss?: () => void;
 };
@@ -20,10 +21,11 @@ export function FreeSlotAddOverlay({
   slot,
   minEntryMinutes = 15,
   gridStepMinutes = 15,
+  hourHeightPx,
   onSelect,
   onDismiss,
 }: FreeSlotAddOverlayProps) {
-  const heightPx = minutesToHeightPx(slot.durationMinutes);
+  const heightPx = minutesToHeightPx(slot.durationMinutes, hourHeightPx);
   const compact = heightPx < 36;
   const quickDurations = buildQuickDurations(slot, gridStepMinutes);
   const showQuickDurations = quickDurations.length > 1;
@@ -33,7 +35,7 @@ export function FreeSlotAddOverlay({
       data-free-slot-overlay
       className="group/free-slot absolute left-1 right-2 z-[12]"
       style={{
-        top: minutesToTopPx(slot.startMinutes),
+        top: minutesToTopPx(slot.startMinutes, hourHeightPx),
         height: heightPx,
       }}
       onPointerLeave={(e) => {

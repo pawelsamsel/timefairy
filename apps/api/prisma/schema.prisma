@@ -125,6 +125,9 @@ model Task {
   status      TaskStatus @default(TODO)
   note        String?
   sortOrder   Int        @default(0)
+  pinned      Boolean    @default(false)
+  scheduledFrom DateTime? @db.Date
+  scheduledTo   DateTime? @db.Date
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
 

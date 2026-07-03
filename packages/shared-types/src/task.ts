@@ -6,18 +6,57 @@ const optionalUrl = z
   .optional()
   .transform((v) => (v === "" ? undefined : v));
 
-export const createTaskSchema = z.object({
-  projectId: z.string().uuid(),
-  clientId: z.string().uuid().optional(),
-  title: z.string().min(1),
-  externalId: z.string().max(128).optional(),
-  externalUrl: optionalUrl,
-  status: z.enum([TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE]).default(TaskStatus.TODO),
-  note: z.string().optional(),
-});
+const optionalIsoDate = z
+  .union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal("")])
+  .optional()
+  .transform((value) => (value === "" ? undefined : value));
+
+export const createTaskSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    clientId: z.string().uuid().optional(),
+    title: z.string().min(1),
+    externalId: z.string().max(128).optional(),
+    externalUrl: optionalUrl,
+    status: z.enum([TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE]).default(TaskStatus.TODO),
+    note: z.string().optional(),
+    pinned: z.boolean().optional(),
+    scheduledFrom: optionalIsoDate,
+    scheduledTo: optionalIsoDate,
+  })
+  .superRefine((value, ctx) => {
+    if (value.scheduledFrom && value.scheduledTo && value.scheduledFrom > value.scheduledTo) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Start date must be on or before due date",
+        path: ["scheduledTo"],
+      });
+    }
+  });
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 
-export const updateTaskSchema = createTaskSchema.partial();
+export const updateTaskSchema = createTaskSchema
+  .innerType()
+  .partial()
+  .extend({
+    scheduledFrom: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(""), z.null()]).optional(),
+    scheduledTo: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.literal(""), z.null()]).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const from =
+      value.scheduledFrom === "" || value.scheduledFrom === null
+        ? null
+        : value.scheduledFrom;
+    const to =
+      value.scheduledTo === "" || value.scheduledTo === null ? null : value.scheduledTo;
+    if (from && to && from > to) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Start date must be on or before due date",
+        path: ["scheduledTo"],
+      });
+    }
+  });
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 
 export const reorderTasksSchema = z.object({
@@ -35,6 +74,9 @@ export const taskSchema = z.object({
   status: z.enum([TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE]),
   note: z.string().nullable(),
   sortOrder: z.number().int(),
+  pinned: z.boolean(),
+  scheduledFrom: z.string().nullable(),
+  scheduledTo: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

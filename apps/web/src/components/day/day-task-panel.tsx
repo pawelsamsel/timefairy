@@ -1,6 +1,6 @@
-import { Fragment, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState, type Ref } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpDown, Briefcase, GripVertical, Play, Square } from "lucide-react";
+import { ArrowUpDown, Briefcase, GripVertical, Pin, Play, Square } from "lucide-react";
 import { TaskStatus, type TaskWithRelations } from "@timefairy/shared-types";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -9,8 +9,16 @@ import { DelayedTooltip } from "@/components/ui/delayed-tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { TASK_DRAG_MIME, type TaskDragPayload } from "@/components/day/day-timeline-types";
 import {
+  formatTaskScheduleLabel,
+  isTaskVisibleOnDay,
+  taskDateOnly,
+} from "@/lib/task-day-visibility";
+import { toDateInputValue } from "@/lib/datetime";
+import {
   loadTaskSortMode,
   moveTaskToIndex,
+  previewTaskOrder,
+  resolveTaskInsertIndex,
   saveTaskSortMode,
   sortTasks,
   TASK_REORDER_MIME,
@@ -18,6 +26,7 @@ import {
 } from "@/lib/task-order";
 
 type DayTaskPanelProps = {
+  selectedDate: string;
   onDragStart: () => void;
   onDragEnd: () => void;
   activeTaskIds: Set<string>;
@@ -26,6 +35,7 @@ type DayTaskPanelProps = {
 };
 
 export function DayTaskPanel({
+  selectedDate,
   onDragStart,
   onDragEnd,
   activeTaskIds,
@@ -33,13 +43,15 @@ export function DayTaskPanel({
   onQuickToggle,
 }: DayTaskPanelProps) {
   const qc = useQueryClient();
+  const listRef = useRef<HTMLDivElement>(null);
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const reorderDragRef = useRef<{ taskId: string; insertIndex: number } | null>(null);
   const [projectFilter, setProjectFilter] = useState<string>("all");
   const [sortMode, setSortMode] = useState<TaskSortMode>(() => loadTaskSortMode());
   const [reorderingTaskId, setReorderingTaskId] = useState<string | null>(null);
-  const [activeDropIndex, setActiveDropIndex] = useState<number | null>(null);
+  const [previewInsertIndex, setPreviewInsertIndex] = useState<number | null>(null);
 
   const manualOrder = sortMode === "manual";
-  const showDropZones = manualOrder && reorderingTaskId !== null;
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects"],
@@ -59,10 +71,21 @@ export function DayTaskPanel({
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
   });
 
+  const today = useMemo(() => toDateInputValue(new Date()), []);
+
   const activeTasks = useMemo(() => {
-    const filtered = tasks.filter((t) => t.status !== TaskStatus.DONE);
+    const filtered = tasks.filter(
+      (task) =>
+        task.status !== TaskStatus.DONE &&
+        isTaskVisibleOnDay(task, selectedDate, today),
+    );
     return sortTasks(filtered, sortMode);
-  }, [tasks, sortMode]);
+  }, [tasks, sortMode, selectedDate, today]);
+
+  const displayTasks = useMemo(() => {
+    if (!manualOrder || !reorderingTaskId) return activeTasks;
+    return previewTaskOrder(activeTasks, reorderingTaskId, previewInsertIndex);
+  }, [activeTasks, manualOrder, previewInsertIndex, reorderingTaskId]);
 
   function handleSortModeChange(value: TaskSortMode) {
     setSortMode(value);
@@ -70,8 +93,9 @@ export function DayTaskPanel({
   }
 
   function finishReorderDrag() {
+    reorderDragRef.current = null;
     setReorderingTaskId(null);
-    setActiveDropIndex(null);
+    setPreviewInsertIndex(null);
     onDragEnd();
   }
 
@@ -84,6 +108,65 @@ export function DayTaskPanel({
     if (!next) return;
     reorderTasks.mutate(next);
   }
+
+  function setRowRef(taskId: string, node: HTMLDivElement | null) {
+    if (node) rowRefs.current.set(taskId, node);
+    else rowRefs.current.delete(taskId);
+  }
+
+  useEffect(() => {
+    if (!reorderingTaskId) return;
+
+    function onDragOver(e: DragEvent) {
+      const drag = reorderDragRef.current;
+      if (!drag) return;
+
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+
+      const listEl = listRef.current;
+      if (!listEl) return;
+
+      const rect = listEl.getBoundingClientRect();
+      if (e.clientY < rect.top || e.clientY > rect.bottom) return;
+
+      const nextIndex = resolveTaskInsertIndex(
+        e.clientY,
+        activeTasks,
+        drag.taskId,
+        (taskId) => rowRefs.current.get(taskId),
+      );
+
+      if (nextIndex === drag.insertIndex) return;
+      drag.insertIndex = nextIndex;
+      setPreviewInsertIndex(nextIndex);
+    }
+
+    function onDrop(e: DragEvent) {
+      const drag = reorderDragRef.current;
+      if (!drag) return;
+
+      const listEl = listRef.current;
+      if (!listEl) return;
+
+      const rect = listEl.getBoundingClientRect();
+      if (e.clientY < rect.top || e.clientY > rect.bottom) return;
+
+      const draggedTaskId = e.dataTransfer?.getData(TASK_REORDER_MIME);
+      if (!draggedTaskId) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      handleInsertAt(drag.insertIndex, draggedTaskId);
+    }
+
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("drop", onDrop);
+    };
+  }, [activeTasks, reorderingTaskId]);
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col">
@@ -168,57 +251,32 @@ export function DayTaskPanel({
           <p className="py-4 text-center text-sm text-muted-foreground">No active tasks.</p>
         )}
         {!isLoading && activeTasks.length > 0 && (
-          <div className={cn("flex flex-col", !manualOrder && "gap-1.5")}>
-            {activeTasks.map((task, index) => (
-              <Fragment key={task.id}>
-                {manualOrder && (
-                  <ReorderDropZone
-                    insertIndex={index}
-                    interactive={showDropZones}
-                    active={activeDropIndex === index}
-                    onActivate={() => setActiveDropIndex(index)}
-                    onDeactivate={() =>
-                      setActiveDropIndex((current) => (current === index ? null : current))
-                    }
-                    onDrop={(draggedTaskId) => {
-                      setActiveDropIndex(null);
-                      handleInsertAt(index, draggedTaskId);
-                    }}
-                  />
-                )}
+          <div ref={listRef} className="flex flex-col gap-1.5">
+            {displayTasks.map((task) => {
+              const sourceIndex = activeTasks.findIndex((entry) => entry.id === task.id);
+
+              return (
                 <TaskRow
+                  key={task.id}
+                  ref={(node) => setRowRef(task.id, node)}
                   task={task}
+                  selectedDate={selectedDate}
+                  today={today}
                   isActive={activeTaskIds.has(task.id)}
                   isPending={pendingTaskId === task.id}
                   isDragging={reorderingTaskId === task.id}
                   manualOrder={manualOrder}
                   onDragStart={onDragStart}
                   onReorderDragStart={() => {
+                    reorderDragRef.current = { taskId: task.id, insertIndex: sourceIndex };
                     setReorderingTaskId(task.id);
-                    setActiveDropIndex(null);
+                    setPreviewInsertIndex(sourceIndex);
                   }}
                   onDragEnd={finishReorderDrag}
                   onQuickToggle={onQuickToggle}
                 />
-              </Fragment>
-            ))}
-            {manualOrder && (
-              <ReorderDropZone
-                insertIndex={activeTasks.length}
-                interactive={showDropZones}
-                active={activeDropIndex === activeTasks.length}
-                onActivate={() => setActiveDropIndex(activeTasks.length)}
-                onDeactivate={() =>
-                  setActiveDropIndex((current) =>
-                    current === activeTasks.length ? null : current,
-                  )
-                }
-                onDrop={(draggedTaskId) => {
-                  setActiveDropIndex(null);
-                  handleInsertAt(activeTasks.length, draggedTaskId);
-                }}
-              />
-            )}
+              );
+            })}
           </div>
         )}
       </div>
@@ -272,129 +330,137 @@ function SortModeOption({
   );
 }
 
-function ReorderDropZone({
-  insertIndex,
-  interactive,
-  active,
-  onActivate,
-  onDeactivate,
-  onDrop,
-}: {
-  insertIndex: number;
-  interactive: boolean;
-  active: boolean;
-  onActivate: () => void;
-  onDeactivate: () => void;
-  onDrop: (draggedTaskId: string) => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "relative flex h-3.5 shrink-0 items-center",
-        !interactive && "pointer-events-none",
-      )}
-      onDragOver={(e) => {
-        if (!interactive || !e.dataTransfer.types.includes(TASK_REORDER_MIME)) return;
-        e.preventDefault();
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = "move";
-        onActivate();
-      }}
-      onDragLeave={onDeactivate}
-      onDrop={(e) => {
-        if (!interactive) return;
-        const draggedTaskId = e.dataTransfer.getData(TASK_REORDER_MIME);
-        if (!draggedTaskId) return;
-        e.preventDefault();
-        e.stopPropagation();
-        onDrop(draggedTaskId);
-      }}
-    >
-      {interactive ? (
-        <div
-          className={cn(
-            "flex h-full w-full items-center rounded-sm border border-dashed px-1 transition-colors",
-            active
-              ? "border-primary bg-primary/10"
-              : "border-border/60 bg-muted/30",
-          )}
-        >
-          <div
-            className={cn(
-              "h-0.5 w-full rounded-full transition-colors",
-              active ? "bg-primary" : "bg-border/70",
-            )}
-          />
-        </div>
-      ) : null}
-      <span className="sr-only">Drop to position {insertIndex + 1}</span>
-    </div>
-  );
+const TASK_ROW_DRAG_IMAGE_OPACITY = 0.93;
+
+function readSolidSurfaceColor(className: "bg-card" | "bg-background"): string {
+  const probe = document.createElement("div");
+  probe.className = className;
+  probe.style.position = "fixed";
+  probe.style.opacity = "0";
+  probe.style.pointerEvents = "none";
+  document.body.appendChild(probe);
+  const color = getComputedStyle(probe).backgroundColor;
+  probe.remove();
+  return color;
 }
 
-function TaskRow({
-  task,
-  isActive,
-  isPending,
-  isDragging,
-  manualOrder,
-  onDragStart,
-  onReorderDragStart,
-  onDragEnd,
-  onQuickToggle,
-}: {
-  task: TaskWithRelations;
-  isActive: boolean;
-  isPending: boolean;
-  isDragging: boolean;
-  manualOrder: boolean;
-  onDragStart: () => void;
-  onReorderDragStart: () => void;
-  onDragEnd: () => void;
-  onQuickToggle: (task: TaskWithRelations) => void;
-}) {
+function setTaskRowDragImage(event: DragEvent, row: HTMLElement) {
+  const rect = row.getBoundingClientRect();
+  const clone = row.cloneNode(true) as HTMLElement;
+
+  clone.querySelectorAll("[data-no-row-drag]").forEach((node) => node.remove());
+
+  const computed = getComputedStyle(row);
+  clone.style.width = `${rect.width}px`;
+  clone.style.position = "fixed";
+  clone.style.top = "-9999px";
+  clone.style.left = "-9999px";
+  clone.style.margin = "0";
+  clone.style.opacity = String(TASK_ROW_DRAG_IMAGE_OPACITY);
+  clone.style.borderRadius = computed.borderRadius;
+  clone.style.border = computed.border;
+  clone.style.backgroundColor = readSolidSurfaceColor("bg-card");
+  clone.style.boxShadow = "0 8px 20px rgb(15 23 42 / 0.16)";
+  clone.style.overflow = "hidden";
+  clone.style.pointerEvents = "none";
+  clone.style.transform = "none";
+  clone.style.transition = "none";
+
+  document.body.appendChild(clone);
+  event.dataTransfer.setDragImage(
+    clone,
+    event.clientX - rect.left,
+    event.clientY - rect.top,
+  );
+
+  window.setTimeout(() => clone.remove(), 0);
+}
+
+const TaskRow = forwardRef(function TaskRow(
+  {
+    task,
+    selectedDate,
+    today,
+    isActive,
+    isPending,
+    isDragging = false,
+    manualOrder,
+    onDragStart,
+    onReorderDragStart,
+    onDragEnd,
+    onQuickToggle,
+  }: {
+    task: TaskWithRelations;
+    selectedDate: string;
+    today: string;
+    isActive: boolean;
+    isPending: boolean;
+    isDragging?: boolean;
+    manualOrder: boolean;
+    onDragStart: () => void;
+    onReorderDragStart: () => void;
+    onDragEnd: () => void;
+    onQuickToggle: (task: TaskWithRelations) => void;
+  },
+  ref: Ref<HTMLDivElement>,
+) {
   const payload: TaskDragPayload = {
     taskId: task.id,
     projectId: task.projectId,
     title: task.title,
   };
+  const scheduleLabel = formatTaskScheduleLabel(task);
+  const dueDate = taskDateOnly(task.scheduledTo);
+  const isOverdue = Boolean(dueDate && selectedDate > dueDate && selectedDate === today);
 
   return (
     <div
+      ref={ref}
+      draggable
+      onDragStart={(e) => {
+        if ((e.target as HTMLElement).closest("[data-no-row-drag]")) {
+          e.preventDefault();
+          return;
+        }
+        e.dataTransfer.setData(TASK_DRAG_MIME, JSON.stringify(payload));
+        if (manualOrder) {
+          e.dataTransfer.setData(TASK_REORDER_MIME, task.id);
+          onReorderDragStart();
+        }
+        e.dataTransfer.effectAllowed = manualOrder ? "copyMove" : "copy";
+        setTaskRowDragImage(e.nativeEvent, e.currentTarget);
+        onDragStart();
+      }}
+      onDragEnd={onDragEnd}
       className={cn(
-        "flex w-full items-start gap-1 rounded-md border bg-background px-1.5 py-1.5 text-sm shadow-sm",
-        "hover:border-primary/40 hover:bg-muted/30",
-        isActive && "border-emerald-500/40 bg-emerald-500/5",
-        isDragging && "opacity-40",
+        "flex w-full cursor-grab items-start gap-1 rounded-md border bg-background px-1.5 py-1.5 text-sm shadow-sm active:cursor-grabbing",
+        "transition-[transform,box-shadow,border-color,background-color]",
+        !isDragging && "hover:border-primary/40 hover:bg-muted/30",
+        isActive && !isDragging && "border-emerald-500/40 bg-emerald-500/5",
+        isDragging &&
+          "border-primary/60 border-dashed bg-primary/5 opacity-35 shadow-none ring-0",
       )}
+      title={manualOrder ? "Drag to reorder or drop on timeline" : "Drag to timeline"}
     >
       <div
-        draggable
-        onDragStart={(e) => {
-          e.dataTransfer.setData(TASK_DRAG_MIME, JSON.stringify(payload));
-          if (manualOrder) {
-            e.dataTransfer.setData(TASK_REORDER_MIME, task.id);
-          }
-          e.dataTransfer.effectAllowed = manualOrder ? "copyMove" : "copy";
-          if (manualOrder) onReorderDragStart();
-          onDragStart();
-        }}
-        onDragEnd={onDragEnd}
-        className={cn(
-          "mt-0.5 shrink-0 cursor-grab rounded p-1 text-muted-foreground",
-          "hover:bg-muted/60 active:cursor-grabbing",
-        )}
-        title={manualOrder ? "Drag to reorder or drop on timeline" : "Drag to timeline"}
-        aria-label={manualOrder ? "Drag to reorder or timeline" : "Drag task to timeline"}
+        className="mt-0.5 shrink-0 rounded p-1 text-muted-foreground pointer-events-none"
+        aria-hidden
       >
         <GripVertical className="h-4 w-4" />
       </div>
 
-      <div className="min-w-0 flex-1 py-0.5">
-        <div className="truncate font-medium">{task.title}</div>
+      <div className="min-w-0 flex-1 py-0.5 select-none">
+        <div className="flex min-w-0 items-center gap-1">
+          {task.pinned ? (
+            <Pin className="h-3 w-3 shrink-0 text-primary" aria-label="Pinned" />
+          ) : null}
+          <div className="truncate font-medium">{task.title}</div>
+        </div>
         <div className="truncate text-xs text-muted-foreground">
           {task.externalId ? `${task.externalId} · ` : ""}
           {task.project?.name}
+          {scheduleLabel ? ` · ${scheduleLabel}` : ""}
+          {isOverdue ? " · overdue" : ""}
         </div>
       </div>
 
@@ -402,8 +468,10 @@ function TaskRow({
         type="button"
         variant="ghost"
         size="icon"
+        data-no-row-drag
+        draggable={false}
         className={cn(
-          "mt-0.5 h-7 w-7 shrink-0",
+          "mt-0.5 h-7 w-7 shrink-0 cursor-pointer",
           isActive
             ? "text-amber-600 hover:text-amber-700"
             : "text-muted-foreground hover:text-emerald-600",
@@ -417,4 +485,4 @@ function TaskRow({
       </Button>
     </div>
   );
-}
+});

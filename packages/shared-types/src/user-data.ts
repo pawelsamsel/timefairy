@@ -46,6 +46,9 @@ export const exportTaskSchema = z.object({
   status: z.enum([TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE]),
   note: z.string().nullable(),
   sortOrder: z.number().int().optional(),
+  pinned: z.boolean().optional(),
+  scheduledFrom: z.string().nullable().optional(),
+  scheduledTo: z.string().nullable().optional(),
   createdAt: isoDate,
   updatedAt: isoDate,
 });

@@ -1,19 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import { TaskStatus } from "@timefairy/shared-types";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useAppDialog } from "@/lib/app-dialog";
 import { useClientListView } from "@/hooks/use-client-list-view";
 import { matchesListSearch } from "@/lib/list-view";
+import { formatTaskScheduleLabel } from "@/lib/task-day-visibility";
 import { TaskExternalLinks } from "@/components/tasks/task-external-links";
 import { InlineTaskAdd } from "@/components/tasks/inline-task-add";
 import { TaskDetailsDialog } from "@/components/tasks/task-details-dialog";
 import { ListPagination } from "@/components/list/list-pagination";
 import { ListSearchField } from "@/components/list/list-search-field";
 import { Button } from "@/components/ui/button";
+import { DelayedTooltip } from "@/components/ui/delayed-tooltip";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -105,6 +108,23 @@ export function TasksPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["tasks"] });
       qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+
+  const [pinningTaskId, setPinningTaskId] = useState<string | null>(null);
+
+  const togglePinned = useMutation({
+    mutationFn: ({ id, pinned }: { id: string; pinned: boolean }) =>
+      api.updateTask(id, { pinned }),
+    onMutate: ({ id }) => setPinningTaskId(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["tasks"] }),
+    onSettled: () => setPinningTaskId(null),
+    onError: (err) => {
+      void alert({
+        title: "Pin update failed",
+        description: getErrorMessage(err),
+        variant: "error",
+      });
     },
   });
 
@@ -228,22 +248,23 @@ export function TasksPage() {
                 <th className="text-left font-medium px-4 py-3">Task</th>
                 <th className="text-left font-medium px-4 py-3">Project</th>
                 <th className="text-left font-medium px-4 py-3">External</th>
+                <th className="text-left font-medium px-4 py-3">Schedule</th>
                 <th className="text-left font-medium px-4 py-3">Status</th>
                 <th className="text-right font-medium px-4 py-3">Entries</th>
-                <th className="text-right font-medium px-4 py-3 w-28">Actions</th>
+                <th className="text-right font-medium px-4 py-3 w-36">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border/40">
               {isLoading && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     Loading…
                   </td>
                 </tr>
               )}
               {!isLoading && listView.filteredItems.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                     {tasks.length === 0
                       ? "No tasks yet"
                       : listView.search.trim()
@@ -267,6 +288,9 @@ export function TasksPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">
+                    {formatTaskScheduleLabel(t) ?? "—"}
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">
                     {taskStatusLabel(t.status)}
                   </td>
                   <td className="px-4 py-3 text-right text-muted-foreground">
@@ -274,6 +298,25 @@ export function TasksPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <DelayedTooltip label={t.pinned ? "Unpin from day view" : "Pin to day view"}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={cn(
+                            t.pinned && "text-primary hover:text-primary",
+                          )}
+                          disabled={pinningTaskId === t.id}
+                          onClick={() =>
+                            togglePinned.mutate({ id: t.id, pinned: !t.pinned })
+                          }
+                          aria-label={t.pinned ? `Unpin ${t.title}` : `Pin ${t.title}`}
+                          aria-pressed={t.pinned}
+                        >
+                          <Pin
+                            className={cn("h-4 w-4", t.pinned && "fill-current")}
+                          />
+                        </Button>
+                      </DelayedTooltip>
                       <Button
                         variant="ghost"
                         size="icon"

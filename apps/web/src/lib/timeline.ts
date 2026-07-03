@@ -212,6 +212,71 @@ export function findFreeSegmentContainingMinute(
   );
 }
 
+export function findDayFreeSegmentContainingMinute(
+  minute: number,
+  occupied: MinuteRange[],
+  minDurationMinutes = TIMELINE_MIN_ENTRY_MINUTES,
+): TimelineDropSlot | null {
+  const dayStart = TIMELINE_START_HOUR * 60;
+  const dayEnd = TIMELINE_END_HOUR * 60;
+
+  if (minute < dayStart || minute >= dayEnd) return null;
+
+  const blocked = mergeMinuteRanges(occupied);
+  let cursor = dayStart;
+
+  const matchSegment = (segStart: number, segEnd: number): TimelineDropSlot | null => {
+    if (
+      minute >= segStart &&
+      minute < segEnd &&
+      segEnd - segStart >= minDurationMinutes
+    ) {
+      return { startMinutes: segStart, durationMinutes: segEnd - segStart };
+    }
+    return null;
+  };
+
+  for (const block of blocked) {
+    const found = matchSegment(cursor, block.start);
+    if (found) return found;
+    cursor = Math.max(cursor, block.end);
+  }
+
+  return matchSegment(cursor, dayEnd);
+}
+
+export function buildCreateDragRange(
+  anchorMinute: number,
+  currentMinute: number,
+  freeSegment: TimelineDropSlot,
+  options: ClampEntryRangeOptions = {},
+): MinuteRange | null {
+  const minEntryMinutes = options.minEntryMinutes ?? TIMELINE_MIN_ENTRY_MINUTES;
+  const segStart = freeSegment.startMinutes;
+  const segEnd = freeSegment.startMinutes + freeSegment.durationMinutes;
+
+  const rawStart = Math.min(anchorMinute, currentMinute);
+  const rawEnd = Math.max(anchorMinute, currentMinute);
+
+  let range = clampEntryMinuteRange({ start: rawStart, end: rawEnd }, options);
+  if (!range) return null;
+
+  range = {
+    start: Math.max(range.start, segStart),
+    end: Math.min(range.end, segEnd),
+  };
+
+  if (range.end - range.start < minEntryMinutes) {
+    if (currentMinute >= anchorMinute) {
+      range.end = Math.min(range.start + minEntryMinutes, segEnd);
+    } else {
+      range.start = Math.max(range.end - minEntryMinutes, segStart);
+    }
+  }
+
+  return clampEntryMinuteRange(range, options);
+}
+
 export function slotDefaultDurationMinutes(
   slot: TimelineDropSlot,
   minEntryMinutes = TIMELINE_MIN_ENTRY_MINUTES,
@@ -305,11 +370,13 @@ export function clientYToTimelineMinute(
   clientY: number,
   scrollContainer: HTMLElement,
   gridOffsetTop: number,
+  hourHeightPx: number = TIMELINE_HOUR_HEIGHT_PX,
 ): number | null {
   const scrollRect = scrollContainer.getBoundingClientRect();
   const yInContent = clientY - scrollRect.top + scrollContainer.scrollTop - gridOffsetTop;
-  if (yInContent < 0 || yInContent > timelineTotalHeightPx()) return null;
-  return TIMELINE_START_HOUR * 60 + (yInContent / TIMELINE_HOUR_HEIGHT_PX) * 60;
+  const totalHeight = timelineTotalHeightPx(hourHeightPx);
+  if (yInContent < 0 || yInContent > totalHeight) return null;
+  return TIMELINE_START_HOUR * 60 + (yInContent / hourHeightPx) * 60;
 }
 
 export const TIMELINE_DROP_HOLD_MS = 600;
@@ -330,23 +397,30 @@ export function isMinuteNearMomentEntries(
   return momentStartMinutes.some((m) => Math.abs(minute - m) <= radiusMinutes);
 }
 
-export function timelineTotalHeightPx(): number {
-  return (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * TIMELINE_HOUR_HEIGHT_PX;
+export function timelineTotalHeightPx(hourHeightPx: number = TIMELINE_HOUR_HEIGHT_PX): number {
+  return (TIMELINE_END_HOUR - TIMELINE_START_HOUR) * hourHeightPx;
 }
 
-export function minutesToTopPx(minutesFromMidnight: number): number {
+export function minutesToTopPx(
+  minutesFromMidnight: number,
+  hourHeightPx: number = TIMELINE_HOUR_HEIGHT_PX,
+): number {
   const offset = minutesFromMidnight - TIMELINE_START_HOUR * 60;
-  return (offset / 60) * TIMELINE_HOUR_HEIGHT_PX;
+  return (offset / 60) * hourHeightPx;
 }
 
-export function minutesToHeightPx(durationMinutes: number): number {
-  return Math.max((durationMinutes / 60) * TIMELINE_HOUR_HEIGHT_PX, 4);
+export function minutesToHeightPx(
+  durationMinutes: number,
+  hourHeightPx: number = TIMELINE_HOUR_HEIGHT_PX,
+): number {
+  return Math.max((durationMinutes / 60) * hourHeightPx, 4);
 }
 
 export function entryBlockMetrics(
   startAt: string | null | undefined,
   endAt: string | null | undefined,
   durationMinutes: number | null | undefined,
+  hourHeightPx: number = TIMELINE_HOUR_HEIGHT_PX,
 ): { topPx: number; heightPx: number } | null {
   if (!startAt) return null;
 
@@ -361,8 +435,8 @@ export function entryBlockMetrics(
   if (duration <= 0) duration = 15;
 
   return {
-    topPx: minutesToTopPx(startMinutes),
-    heightPx: minutesToHeightPx(duration),
+    topPx: minutesToTopPx(startMinutes, hourHeightPx),
+    heightPx: minutesToHeightPx(duration, hourHeightPx),
   };
 }
 
@@ -380,11 +454,19 @@ type TimedEntryLike = {
   durationMinutes: number | null;
 };
 
-export function layoutTimedEntryBlocks(entries: TimedEntryLike[]): Map<string, TimedEntryBlockLayout> {
+export function layoutTimedEntryBlocks(
+  entries: TimedEntryLike[],
+  hourHeightPx: number = TIMELINE_HOUR_HEIGHT_PX,
+): Map<string, TimedEntryBlockLayout> {
   const items = entries
     .map((entry) => {
       const range = entryToMinuteRange(entry.startAt, entry.endAt, entry.durationMinutes);
-      const metrics = entryBlockMetrics(entry.startAt, entry.endAt, entry.durationMinutes);
+      const metrics = entryBlockMetrics(
+        entry.startAt,
+        entry.endAt,
+        entry.durationMinutes,
+        hourHeightPx,
+      );
       if (!range || !metrics) return null;
       return { id: entry.id, start: range.start, end: range.end, metrics };
     })

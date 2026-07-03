@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Copy } from "lucide-react";
+import { Copy, Rows2, Rows3, Rows4 } from "lucide-react";
 import type { TimeEntryWithRelations } from "@timefairy/shared-types";
 import { cn } from "@/lib/utils";
 import { formatEntryTimePrefix } from "@/lib/datetime";
@@ -44,13 +44,22 @@ import {
   useEntryScheduleDrag,
   type EntryScheduleChange,
 } from "@/components/day/day-timeline-entry-interaction";
+import { useTimelineCreateDrag } from "@/components/day/day-timeline-create-drag";
 import { FreeSlotAddOverlay } from "@/components/day/day-timeline-free-slot";
+import { Button } from "@/components/ui/button";
+import { DelayedTooltip } from "@/components/ui/delayed-tooltip";
+import {
+  resolveCompactHourHeightPx,
+  TIMELINE_ZOOM_PRESETS,
+  type TimelineZoomLevel,
+} from "@/lib/timeline-zoom";
 
 export type { TaskDragPayload } from "@/components/day/day-timeline-types";
 export type { EntryScheduleChange } from "@/components/day/day-timeline-entry-interaction";
 
 const TIMELINE_LABEL_OFFSET_PX = 2;
 const TIMELINE_LABEL_PADDING_BOTTOM = 14;
+const TIMELINE_FREE_SLOT_HOVER_ENABLED = false;
 
 type DayTimelineProps = {
   className?: string;
@@ -68,6 +77,9 @@ type DayTimelineProps = {
   gridStepMinutes?: number;
   minEntryMinutes?: number;
   useTimeGrid?: boolean;
+  hourHeightPx?: number;
+  zoomLevel?: TimelineZoomLevel;
+  onZoomLevelChange?: (level: TimelineZoomLevel) => void;
 };
 
 export function DayTimeline({
@@ -86,13 +98,34 @@ export function DayTimeline({
   gridStepMinutes = 15,
   minEntryMinutes = 15,
   useTimeGrid = false,
+  hourHeightPx = TIMELINE_HOUR_HEIGHT_PX,
+  zoomLevel,
+  onZoomLevelChange,
 }: DayTimelineProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
+  const untimedSectionRef = useRef<HTMLDivElement>(null);
   const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const holdHourRef = useRef<number | null>(null);
   const freeSlotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingFreeSlotKeyRef = useRef<string | null>(null);
+
+  const hourCount = TIMELINE_END_HOUR - TIMELINE_START_HOUR;
+  const isCompactFill = zoomLevel === 0;
+  const [scrollViewportHeight, setScrollViewportHeight] = useState(0);
+  const [untimedSectionHeight, setUntimedSectionHeight] = useState(0);
+
+  const resolvedHourHeightPx = useMemo(() => {
+    if (!isCompactFill || scrollViewportHeight <= 0) {
+      return hourHeightPx;
+    }
+    const timelineAvailable = scrollViewportHeight - untimedSectionHeight;
+    return resolveCompactHourHeightPx(
+      timelineAvailable,
+      hourCount,
+      TIMELINE_LABEL_PADDING_BOTTOM,
+    );
+  }, [isCompactFill, scrollViewportHeight, untimedSectionHeight, hourHeightPx, hourCount]);
 
   const [highlightSlot, setHighlightSlot] = useState<TimelineDropSlot | null>(null);
   const [hoverFreeSlot, setHoverFreeSlot] = useState<TimelineDropSlot | null>(null);
@@ -107,14 +140,19 @@ export function DayTimeline({
   const momentEntries = entries.filter(isMomentEntry);
   const timedEntries = entries.filter(
     (e) =>
-      !isMomentEntry(e) && entryBlockMetrics(e.startAt, e.endAt, e.durationMinutes) != null,
+      !isMomentEntry(e) &&
+      entryBlockMetrics(e.startAt, e.endAt, e.durationMinutes, resolvedHourHeightPx) != null,
   );
   const untimedEntries = entries.filter(
     (e) =>
-      !isMomentEntry(e) && entryBlockMetrics(e.startAt, e.endAt, e.durationMinutes) == null,
+      !isMomentEntry(e) &&
+      entryBlockMetrics(e.startAt, e.endAt, e.durationMinutes, resolvedHourHeightPx) == null,
   );
   const occupiedRanges = entriesToOccupiedRanges(timedEntries);
-  const entryLayouts = useMemo(() => layoutTimedEntryBlocks(timedEntries), [timedEntries]);
+  const entryLayouts = useMemo(
+    () => layoutTimedEntryBlocks(timedEntries, resolvedHourHeightPx),
+    [timedEntries, resolvedHourHeightPx],
+  );
   const momentStartMinutes = useMemo(
     () =>
       momentEntries
@@ -128,17 +166,47 @@ export function DayTimeline({
   const isToday =
     y === now.getFullYear() && m === now.getMonth() + 1 && d === now.getDate();
   const nowTopPx = isToday
-    ? minutesToTopPx(now.getHours() * 60 + now.getMinutes())
+    ? minutesToTopPx(now.getHours() * 60 + now.getMinutes(), resolvedHourHeightPx)
     : null;
 
   useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const sync = () => setScrollViewportHeight(el.clientHeight);
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    sync();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = untimedSectionRef.current;
+    if (!el || untimedEntries.length === 0) {
+      setUntimedSectionHeight(0);
+      return;
+    }
+    const sync = () => setUntimedSectionHeight(el.offsetHeight);
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    sync();
+    return () => observer.disconnect();
+  }, [untimedEntries.length]);
+
+  useEffect(() => {
     if (!scrollRef.current) return;
-    const scrollTargetPx = minutesToTopPx(TIMELINE_DEFAULT_SCROLL_HOUR * 60);
+    if (isCompactFill && scrollViewportHeight > 0) {
+      scrollRef.current.scrollTop = 0;
+      return;
+    }
+    const scrollTargetPx = minutesToTopPx(
+      TIMELINE_DEFAULT_SCROLL_HOUR * 60,
+      resolvedHourHeightPx,
+    );
     scrollRef.current.scrollTop = Math.max(
       0,
       scrollTargetPx - scrollRef.current.clientHeight * 0.3,
     );
-  }, [dateStr]);
+  }, [dateStr, resolvedHourHeightPx, isCompactFill, scrollViewportHeight]);
 
   useEffect(() => () => {
     clearHoldTimer();
@@ -179,18 +247,65 @@ export function DayTimeline({
 
   function minuteFromEvent(e: React.DragEvent): number | null {
     if (!scrollRef.current) return null;
-    return clientYToTimelineMinute(e.clientY, scrollRef.current, gridOffsetTop());
+    return clientYToTimelineMinute(
+      e.clientY,
+      scrollRef.current,
+      gridOffsetTop(),
+      resolvedHourHeightPx,
+    );
   }
 
   const minuteFromClientY = useCallback(
     (clientY: number) => {
       if (!scrollRef.current) return null;
-      const raw = clientYToTimelineMinute(clientY, scrollRef.current, gridOffsetTop());
+      const raw = clientYToTimelineMinute(
+        clientY,
+        scrollRef.current,
+        gridOffsetTop(),
+        resolvedHourHeightPx,
+      );
       if (raw === null) return null;
       return useTimeGrid ? snapTimelineMinutes(raw, gridStepMinutes) : raw;
     },
-    [gridStepMinutes, useTimeGrid],
+    [gridStepMinutes, resolvedHourHeightPx, useTimeGrid],
   );
+
+  const snapMinuteFromClientY = useCallback(
+    (clientY: number) => {
+      if (!scrollRef.current) return null;
+      const raw = clientYToTimelineMinute(
+        clientY,
+        scrollRef.current,
+        gridOffsetTop(),
+        resolvedHourHeightPx,
+      );
+      if (raw === null) return null;
+      return snapTimelineMinutes(raw, gridStepMinutes);
+    },
+    [gridStepMinutes, resolvedHourHeightPx],
+  );
+
+  const handleCreateDrag = useCallback(
+    (slot: TimelineDropSlot) => {
+      dismissFreeSlotOverlay();
+      onFreeSlotClick(slot);
+    },
+    [onFreeSlotClick],
+  );
+
+  const {
+    preview: createPreview,
+    startCreateDrag,
+    cancelCreateDrag,
+    isCreating,
+  } = useTimelineCreateDrag({
+    minuteFromClientY: snapMinuteFromClientY,
+    occupiedRanges,
+    momentStartMinutes,
+    gridStepMinutes,
+    minEntryMinutes,
+    onCreate: handleCreateDrag,
+  });
 
   const { preview: schedulePreview, startDrag, entryClickAllowed } = useEntryScheduleDrag({
     dateStr,
@@ -205,18 +320,41 @@ export function DayTimeline({
       resetDropUi();
     } else {
       dismissFreeSlotOverlay();
+      cancelCreateDrag();
     }
-  }, [isDraggingTask]);
+  }, [isDraggingTask, cancelCreateDrag]);
 
   useEffect(() => {
     if (schedulePreview) {
       dismissFreeSlotOverlay();
+      cancelCreateDrag();
     }
-  }, [schedulePreview]);
+  }, [schedulePreview, cancelCreateDrag]);
+
+  const handleGridPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (isDraggingTask || schedulePreview) return;
+
+      const target = e.target as HTMLElement;
+      if (
+        target.closest("[data-free-slot-overlay]") ||
+        target.closest("[data-moment-entry]") ||
+        target.closest("[data-timeline-entry]")
+      ) {
+        return;
+      }
+
+      dismissFreeSlotOverlay();
+      startCreateDrag(e);
+    },
+    [isDraggingTask, schedulePreview, startCreateDrag],
+  );
 
   const handleGridPointerMove = useCallback(
     (e: React.PointerEvent) => {
-      if (isDraggingTask || schedulePreview) {
+      if (!TIMELINE_FREE_SLOT_HOVER_ENABLED) return;
+
+      if (isDraggingTask || schedulePreview || isCreating) {
         dismissFreeSlotOverlay();
         return;
       }
@@ -262,6 +400,7 @@ export function DayTimeline({
       momentStartMinutes,
       occupiedRanges,
       schedulePreview,
+      isCreating,
     ],
   );
 
@@ -330,25 +469,28 @@ export function DayTimeline({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-1 overflow-hidden rounded-md border bg-card shadow-sm",
+        "relative flex min-h-0 flex-1 overflow-hidden rounded-md border bg-card shadow-sm",
         className,
       )}
     >
+      {zoomLevel != null && onZoomLevelChange ? (
+        <TimelineZoomToggle zoomLevel={zoomLevel} onZoomLevelChange={onZoomLevelChange} />
+      ) : null}
       <div ref={scrollRef} className="relative min-h-0 flex-1 overflow-y-auto">
         <div
           className="relative"
           style={{
-            minHeight: timelineTotalHeightPx() + TIMELINE_LABEL_PADDING_BOTTOM,
+            minHeight: timelineTotalHeightPx(resolvedHourHeightPx) + TIMELINE_LABEL_PADDING_BOTTOM,
           }}
         >
-          <div className="relative" style={{ height: timelineTotalHeightPx() }}>
+          <div className="relative" style={{ height: timelineTotalHeightPx(resolvedHourHeightPx) }}>
             {hours.map((hour) => (
               <div
                 key={`gutter-${hour}`}
                 className="pointer-events-none absolute left-0 w-14 border-b border-border/30 bg-muted/20"
                 style={{
-                  top: (hour - TIMELINE_START_HOUR) * TIMELINE_HOUR_HEIGHT_PX,
-                  height: TIMELINE_HOUR_HEIGHT_PX,
+                  top: (hour - TIMELINE_START_HOUR) * resolvedHourHeightPx,
+                  height: resolvedHourHeightPx,
                 }}
               />
             ))}
@@ -358,7 +500,7 @@ export function DayTimeline({
                 key={`label-${hour}`}
                 className="pointer-events-none absolute left-0 z-10 w-14 pr-2 text-right text-[11px] leading-none tabular-nums text-muted-foreground"
                 style={{
-                  top: (hour - TIMELINE_START_HOUR) * TIMELINE_HOUR_HEIGHT_PX,
+                  top: (hour - TIMELINE_START_HOUR) * resolvedHourHeightPx,
                   transform: `translateY(${TIMELINE_LABEL_OFFSET_PX}px)`,
                 }}
               >
@@ -369,7 +511,7 @@ export function DayTimeline({
             <div
               className="pointer-events-none absolute left-0 z-10 w-14 pr-2 text-right text-[11px] leading-none tabular-nums text-muted-foreground"
               style={{
-                top: timelineTotalHeightPx(),
+                top: timelineTotalHeightPx(resolvedHourHeightPx),
                 transform: `translateY(${TIMELINE_LABEL_OFFSET_PX}px)`,
               }}
             >
@@ -378,10 +520,14 @@ export function DayTimeline({
 
             <div
               ref={gridRef}
-              className="relative ml-14"
-              style={{ height: timelineTotalHeightPx() }}
-              onPointerMove={handleGridPointerMove}
-              onPointerLeave={dismissFreeSlotOverlay}
+              className={cn(
+                "relative ml-14",
+                !isDraggingTask && !schedulePreview && !isCreating && "cursor-crosshair",
+              )}
+              style={{ height: timelineTotalHeightPx(resolvedHourHeightPx) }}
+              onPointerDown={handleGridPointerDown}
+              onPointerMove={TIMELINE_FREE_SLOT_HOVER_ENABLED ? handleGridPointerMove : undefined}
+              onPointerLeave={TIMELINE_FREE_SLOT_HOVER_ENABLED ? dismissFreeSlotOverlay : undefined}
               onDragLeave={(e) => {
               const next = e.relatedTarget as Node | null;
               if (next && e.currentTarget.contains(next)) return;
@@ -395,13 +541,13 @@ export function DayTimeline({
                 key={`row-${hour}`}
                 className="pointer-events-none absolute left-0 right-0 border-b border-border/30"
                 style={{
-                  top: (hour - TIMELINE_START_HOUR) * TIMELINE_HOUR_HEIGHT_PX,
-                  height: TIMELINE_HOUR_HEIGHT_PX,
+                  top: (hour - TIMELINE_START_HOUR) * resolvedHourHeightPx,
+                  height: resolvedHourHeightPx,
                 }}
               />
             ))}
 
-            {useTimeGrid &&
+            {gridStepMinutes < 60 &&
               hours.flatMap((hour) =>
                 Array.from({ length: Math.floor(60 / gridStepMinutes) - 1 }, (_, index) => {
                   const offset = (index + 1) * gridStepMinutes;
@@ -411,7 +557,7 @@ export function DayTimeline({
                       key={`grid-${hour}-${offset}`}
                       className="pointer-events-none absolute left-0 right-0 border-b border-border/15"
                       style={{
-                        top: minutesToTopPx(topMinutes),
+                        top: minutesToTopPx(topMinutes, resolvedHourHeightPx),
                         height: 0,
                       }}
                     />
@@ -419,12 +565,29 @@ export function DayTimeline({
                 }),
               )}
 
+            {createPreview && (
+              <div
+                className="pointer-events-none absolute left-1 right-2 z-20 rounded-md border-2 border-dashed border-primary bg-primary/20"
+                style={{
+                  top: minutesToTopPx(createPreview.start, resolvedHourHeightPx),
+                  height: minutesToHeightPx(
+                    createPreview.end - createPreview.start,
+                    resolvedHourHeightPx,
+                  ),
+                }}
+              >
+                <span className="absolute left-2 top-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-primary shadow-sm">
+                  {formatMinuteRangeLabel(createPreview.start, createPreview.end)}
+                </span>
+              </div>
+            )}
+
             {highlightSlot && isDraggingTask && (
               <div
                 className="pointer-events-none absolute left-1 right-2 z-20 rounded-md border-2 border-dashed border-primary bg-primary/15"
                 style={{
-                  top: minutesToTopPx(highlightSlot.startMinutes),
-                  height: minutesToHeightPx(highlightSlot.durationMinutes),
+                  top: minutesToTopPx(highlightSlot.startMinutes, resolvedHourHeightPx),
+                  height: minutesToHeightPx(highlightSlot.durationMinutes, resolvedHourHeightPx),
                 }}
               >
                 <span className="absolute left-2 top-1 rounded bg-background/90 px-1.5 py-0.5 text-[10px] font-medium text-primary shadow-sm">
@@ -437,7 +600,7 @@ export function DayTimeline({
               <div
                 className="absolute left-2 right-2 z-40 rounded-md border border-primary/40 bg-background p-2 shadow-xl"
                 style={{
-                  top: (expandedHour - TIMELINE_START_HOUR) * TIMELINE_HOUR_HEIGHT_PX + 4,
+                  top: (expandedHour - TIMELINE_START_HOUR) * resolvedHourHeightPx + 4,
                 }}
                 onDragOver={(e) => e.preventDefault()}
               >
@@ -475,11 +638,16 @@ export function DayTimeline({
               </div>
             )}
 
-            {hoverFreeSlot && !isDraggingTask && !schedulePreview && (
+            {TIMELINE_FREE_SLOT_HOVER_ENABLED &&
+              hoverFreeSlot &&
+              !isDraggingTask &&
+              !schedulePreview &&
+              !isCreating && (
               <FreeSlotAddOverlay
                 slot={hoverFreeSlot}
                 minEntryMinutes={minEntryMinutes}
                 gridStepMinutes={gridStepMinutes}
+                hourHeightPx={resolvedHourHeightPx}
                 onDismiss={dismissFreeSlotOverlay}
                 onSelect={(slot, durationMinutes) => {
                   dismissFreeSlotOverlay();
@@ -492,6 +660,7 @@ export function DayTimeline({
               <MomentEntryMarker
                 key={entry.id}
                 entry={entry}
+                hourHeightPx={resolvedHourHeightPx}
                 display={display}
                 clientNames={clientNames}
                 projectClientIds={projectClientIds}
@@ -514,6 +683,7 @@ export function DayTimeline({
                   entry={entry}
                   layout={layout}
                   previewRange={previewRange}
+                  hourHeightPx={resolvedHourHeightPx}
                   display={display}
                   clientNames={clientNames}
                   projectClientIds={projectClientIds}
@@ -542,7 +712,7 @@ export function DayTimeline({
         </div>
 
         {untimedEntries.length > 0 && (
-          <div className="ml-14 border-t bg-muted/10 px-3 py-3">
+          <div ref={untimedSectionRef} className="ml-14 border-t bg-muted/10 px-3 py-3">
             <p className="mb-2 text-xs font-medium text-muted-foreground">Without start time</p>
             <div className="space-y-1">
               {untimedEntries.map((entry) => (
@@ -563,8 +733,42 @@ export function DayTimeline({
   );
 }
 
+const TIMELINE_ZOOM_ICONS = [Rows2, Rows3, Rows4] as const;
+
+function TimelineZoomToggle({
+  zoomLevel,
+  onZoomLevelChange,
+}: {
+  zoomLevel: TimelineZoomLevel;
+  onZoomLevelChange: (level: TimelineZoomLevel) => void;
+}) {
+  return (
+    <div className="absolute right-4 top-2 z-30 flex gap-0.5 rounded-md border border-border/60 bg-card p-0.5 shadow-sm">
+      {TIMELINE_ZOOM_PRESETS.map((preset) => {
+        const Icon = TIMELINE_ZOOM_ICONS[preset.level];
+        return (
+          <DelayedTooltip key={preset.level} label={preset.description}>
+            <Button
+              type="button"
+              size="icon"
+              variant={zoomLevel === preset.level ? "default" : "ghost"}
+              className="h-7 w-7"
+              onClick={() => onZoomLevelChange(preset.level)}
+              aria-pressed={zoomLevel === preset.level}
+              aria-label={preset.label}
+            >
+              <Icon className="h-3.5 w-3.5" />
+            </Button>
+          </DelayedTooltip>
+        );
+      })}
+    </div>
+  );
+}
+
 function MomentEntryMarker({
   entry,
+  hourHeightPx,
   display,
   clientNames,
   projectClientIds,
@@ -573,6 +777,7 @@ function MomentEntryMarker({
   onClick,
 }: {
   entry: TimeEntryWithRelations;
+  hourHeightPx: number;
   display: DayViewDisplayOptions;
   clientNames: Map<string, string>;
   projectClientIds: Map<string, string>;
@@ -619,7 +824,7 @@ function MomentEntryMarker({
   if (!entry.startAt) return null;
 
   const start = new Date(entry.startAt);
-  const topPx = minutesToTopPx(start.getHours() * 60 + start.getMinutes());
+  const topPx = minutesToTopPx(start.getHours() * 60 + start.getMinutes(), hourHeightPx);
   const color = entryDisplayColor(entry);
   const timePrefix = formatEntryTimePrefix(entry.startAt, null, null);
   const label = formatEntryLabel(entry, display, clientNames, projectClientIds, timePrefix);
@@ -686,6 +891,7 @@ function TimelineEntryBlock({
   entry,
   layout,
   previewRange,
+  hourHeightPx,
   display,
   clientNames,
   projectClientIds,
@@ -698,6 +904,7 @@ function TimelineEntryBlock({
   entry: TimeEntryWithRelations;
   layout: TimedEntryBlockLayout;
   previewRange: { start: number; end: number } | null;
+  hourHeightPx: number;
   display: DayViewDisplayOptions;
   clientNames: Map<string, string>;
   projectClientIds: Map<string, string>;
@@ -723,9 +930,9 @@ function TimelineEntryBlock({
     projectClientIds,
     timePrefix,
   );
-  const topPx = previewRange ? minutesToTopPx(previewRange.start) : layout.topPx;
+  const topPx = previewRange ? minutesToTopPx(previewRange.start, hourHeightPx) : layout.topPx;
   const heightPx = previewRange
-    ? minutesToHeightPx(previewRange.end - previewRange.start)
+    ? minutesToHeightPx(previewRange.end - previewRange.start, hourHeightPx)
     : layout.heightPx;
   const handlesDisabled = dimmed || !entry.startAt;
   const isCompact = heightPx <= COMPACT_ENTRY_HEIGHT_PX;
@@ -783,6 +990,7 @@ function TimelineEntryBlock({
   return (
     <>
     <div
+      data-timeline-entry
       className={cn(
         "group/entry absolute z-10 overflow-hidden rounded-sm border border-white/20 text-left text-xs text-white shadow-sm",
         layout.columnCount > 1 && "text-[11px]",

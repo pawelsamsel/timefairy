@@ -1,0 +1,4 @@
+ALTER TABLE "Task"
+ADD COLUMN "pinned" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN "scheduledFrom" DATE,
+ADD COLUMN "scheduledTo" DATE;
