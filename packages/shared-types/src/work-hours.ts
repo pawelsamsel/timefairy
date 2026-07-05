@@ -25,6 +25,8 @@ export const DEFAULT_WORK_HOURS_PREFERENCES: WorkHoursPreferences = {
   useTimeGrid: false,
 };
 
+export const DEFAULT_FALLBACK_MIN_TASK_MINUTES = 30;
+
 export const clientWorkHoursOverrideSchema = z.object({
   dailyWorkHours: z.number().positive().nullable().optional(),
   includeSaturdays: z.boolean().nullable().optional(),

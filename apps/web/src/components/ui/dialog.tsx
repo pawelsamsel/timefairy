@@ -31,26 +31,56 @@ const dialogFieldClass =
 
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    fullscreen?: boolean;
+    showClose?: boolean;
+    elevated?: boolean;
+  }
+>(({ className, children, fullscreen = false, showClose = true, elevated = false, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
+    <DialogOverlay
+      className={cn(
+        fullscreen && "z-[55] bg-background backdrop-blur-none",
+        elevated && "z-[70]",
+      )}
+    />
     <DialogPrimitive.Content
       ref={ref}
+      data-fullscreen={fullscreen ? "true" : undefined}
       className={cn(
-        "dialog-surface fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-0 p-0 duration-200 overflow-hidden sm:rounded-md",
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-        dialogSurfaceClass,
+        "dialog-surface fixed gap-0 p-0 duration-200 overflow-hidden",
+        fullscreen
+          ? "dialog-surface-fullscreen inset-0 z-[60] flex h-dvh min-h-dvh max-h-dvh w-screen max-w-none flex-col rounded-none border-0 shadow-none ring-0 translate-x-0 translate-y-0 data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
+          : cn(
+              "left-1/2 top-1/2 w-[min(calc(100vw-2rem),28rem)] -translate-x-1/2 -translate-y-1/2 rounded-md",
+              elevated ? "z-[70]" : "z-50",
+              "data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95",
+            ),
+        !fullscreen && dialogSurfaceClass,
         dialogFieldClass,
+        fullscreen && "bg-background text-foreground",
         className,
       )}
       {...props}
     >
-      <div className="px-4 pt-4 pb-0">{children}</div>
-      <DialogPrimitive.Close className="absolute right-4 top-4 rounded-md p-1 text-imperial-blue/70 transition-colors hover:bg-imperial-blue-50 hover:text-imperial-blue focus:outline-none focus:ring-2 focus:ring-steel-azure/50">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
+      {fullscreen ? (
+        <div className="flex h-full min-h-0 flex-1 flex-col">{children}</div>
+      ) : (
+        <div className="px-4 pt-4 pb-0">{children}</div>
+      )}
+      {showClose ? (
+        <DialogPrimitive.Close
+          className={cn(
+            "absolute right-4 top-4 rounded-md p-1 transition-colors focus:outline-none focus:ring-2 focus:ring-steel-azure/50",
+            fullscreen
+              ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+              : "text-imperial-blue/70 hover:bg-imperial-blue-50 hover:text-imperial-blue",
+          )}
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </DialogPrimitive.Close>
+      ) : null}
     </DialogPrimitive.Content>
   </DialogPortal>
 ));

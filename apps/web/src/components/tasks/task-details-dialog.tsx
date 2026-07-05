@@ -5,6 +5,8 @@ import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useAppDialog } from "@/lib/app-dialog";
 import { formatTimeRange } from "@/lib/datetime";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -45,7 +47,9 @@ export function TaskDetailsDialog({
 }: Props) {
   const qc = useQueryClient();
   const { confirm, alert } = useAppDialog();
+  const isMobile = useIsMobileLayout();
   const isEdit = taskId != null;
+  const formId = "task-details-form";
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects"],
@@ -202,191 +206,232 @@ export function TaskDetailsDialog({
     save.mutate();
   }
 
+  const formFields = (
+    <>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+
+      <div className="space-y-2">
+        <Label htmlFor="task-name">Name</Label>
+        {isEdit && !nameEditing ? (
+          <div className="flex items-center gap-2 rounded-lg border border-imperial-blue-200 bg-imperial-blue-50/60 px-3 py-2">
+            <span className="flex-1 font-medium text-imperial-blue truncate">
+              {title || taskDetail?.title}
+            </span>
+            <Button
+              type="button"
+              variant="dialogOutline"
+              size="sm"
+              onClick={() => setNameEditing(true)}
+            >
+              Edit
+            </Button>
+          </div>
+        ) : (
+          <Input
+            ref={nameInputRef}
+            id="task-name"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            onKeyDown={(e) => {
+              if (isEdit && e.key === "Escape") cancelNameEdit();
+            }}
+          />
+        )}
+      </div>
+
+      <div className="space-y-2">
+        <Label>Project</Label>
+        <Select value={projectId} onValueChange={setProjectId}>
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {visibleProjects.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
+                {p.client?.name ? ` · ${p.client.name}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="task-ext-id">External ID</Label>
+          <Input
+            id="task-ext-id"
+            value={externalId}
+            onChange={(e) => setExternalId(e.target.value)}
+            placeholder="JIRA-123"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Status</Label>
+          <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={TaskStatus.TODO}>To do</SelectItem>
+              <SelectItem value={TaskStatus.IN_PROGRESS}>In progress</SelectItem>
+              <SelectItem value={TaskStatus.DONE}>Done</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="task-ext-url">External link</Label>
+        <Input
+          id="task-ext-url"
+          type="url"
+          value={externalUrl}
+          onChange={(e) => setExternalUrl(e.target.value)}
+          placeholder="https://…"
+        />
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="task-pinned"
+            checked={pinned}
+            onCheckedChange={(checked) => setPinned(checked === true)}
+          />
+          <div className="space-y-1">
+            <Label htmlFor="task-pinned" className="cursor-pointer">
+              Pinned
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              Always show on the day view, regardless of schedule dates.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <Label htmlFor="task-from">Start date (optional)</Label>
+            <Input
+              id="task-from"
+              type="date"
+              value={scheduledFrom}
+              max={scheduledTo || undefined}
+              onChange={(e) => setScheduledFrom(e.target.value)}
+              className="native-picker-input"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="task-to">Due date (optional)</Label>
+            <Input
+              id="task-to"
+              type="date"
+              value={scheduledTo}
+              min={scheduledFrom || undefined}
+              onChange={(e) => setScheduledTo(e.target.value)}
+              className="native-picker-input"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="task-note">Note</Label>
+        <Textarea id="task-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
+      </div>
+
+      {isEdit && taskDetail && taskDetail.timeEntries.length > 0 && (
+        <div className="space-y-2 pt-2">
+          <Label className="text-muted-foreground">
+            Linked time entries ({taskDetail._count?.timeEntries ?? taskDetail.timeEntries.length})
+          </Label>
+          <ul className="max-h-40 overflow-y-auto divide-y divide-border/40 rounded-lg bg-muted/30">
+            {taskDetail.timeEntries.map((e) => (
+              <li key={e.id} className="px-3 py-2 text-sm">
+                <div className="font-medium">
+                  {formatTimeRange(e.startAt, e.endAt, e.durationMinutes)}
+                </div>
+                {e.note && <div className="text-muted-foreground text-xs">{e.note}</div>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+
+  const formFooter = (
+    <DialogFooter
+      className={cn(
+        isMobile &&
+          "-mx-0 mt-0 shrink-0 flex-row flex-wrap items-center justify-end rounded-none border-t border-border/40 bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+      )}
+    >
+      {isEdit && (
+        <Button
+          type="button"
+          variant="destructive"
+          className={isMobile ? "mr-auto" : "sm:mr-auto"}
+          onClick={() => void handleDelete()}
+          disabled={remove.isPending || save.isPending}
+        >
+          Delete
+        </Button>
+      )}
+      <Button type="button" variant="dialogOutline" onClick={() => onOpenChange(false)}>
+        Cancel
+      </Button>
+      <Button
+        type="submit"
+        form={isMobile ? formId : undefined}
+        disabled={save.isPending || !projectId}
+      >
+        {save.isPending ? "Saving…" : isEdit ? "Save" : "Create"}
+      </Button>
+    </DialogFooter>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
-          <DialogDescription>
-            Name, project, schedule, external link, status, and notes.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent fullscreen={isMobile} className={cn(isMobile && "flex flex-col", !isMobile && "sm:max-w-lg max-h-[90vh] overflow-y-auto")}>
+        {isMobile ? (
+          <div className="flex h-full min-h-0 flex-1 flex-col">
+            <DialogHeader className="shrink-0 space-y-0 border-b border-border/40 px-4 pb-3 pt-4 text-left">
+              <DialogTitle className="text-foreground">{isEdit ? "Edit task" : "New task"}</DialogTitle>
+            </DialogHeader>
 
-        {isEdit && isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : isEdit && !taskDetail ? null : (
-          <form onSubmit={onSubmit} className="space-y-4">
-            {error && <p className="text-sm text-destructive">{error}</p>}
-
-            <div className="space-y-2">
-              <Label htmlFor="task-name">Name</Label>
-              {isEdit && !nameEditing ? (
-                <div className="flex items-center gap-2 rounded-lg border border-imperial-blue-200 bg-imperial-blue-50/60 px-3 py-2">
-                  <span className="flex-1 font-medium text-imperial-blue truncate">
-                    {title || taskDetail?.title}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="dialogOutline"
-                    size="sm"
-                    onClick={() => setNameEditing(true)}
-                  >
-                    Edit
-                  </Button>
+            {isEdit && isLoading ? (
+              <p className="flex-1 px-4 py-4 text-sm text-muted-foreground">Loading…</p>
+            ) : isEdit && !taskDetail ? null : (
+              <>
+                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+                  <form id={formId} onSubmit={onSubmit} className="space-y-4">
+                    {formFields}
+                  </form>
                 </div>
-              ) : (
-                <Input
-                  ref={nameInputRef}
-                  id="task-name"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                  onKeyDown={(e) => {
-                    if (isEdit && e.key === "Escape") cancelNameEdit();
-                  }}
-                />
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label>Project</Label>
-              <Select value={projectId} onValueChange={setProjectId}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {visibleProjects.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                      {p.client?.name ? ` · ${p.client.name}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="task-ext-id">External ID</Label>
-                <Input
-                  id="task-ext-id"
-                  value={externalId}
-                  onChange={(e) => setExternalId(e.target.value)}
-                  placeholder="JIRA-123"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={status} onValueChange={(v) => setStatus(v as TaskStatus)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={TaskStatus.TODO}>To do</SelectItem>
-                    <SelectItem value={TaskStatus.IN_PROGRESS}>In progress</SelectItem>
-                    <SelectItem value={TaskStatus.DONE}>Done</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="task-ext-url">External link</Label>
-              <Input
-                id="task-ext-url"
-                type="url"
-                value={externalUrl}
-                onChange={(e) => setExternalUrl(e.target.value)}
-                placeholder="https://…"
-              />
-            </div>
-
-            <div className="space-y-3 rounded-lg border border-border/60 bg-muted/20 p-3">
-              <div className="flex items-start gap-3">
-                <Checkbox
-                  id="task-pinned"
-                  checked={pinned}
-                  onCheckedChange={(checked) => setPinned(checked === true)}
-                />
-                <div className="space-y-1">
-                  <Label htmlFor="task-pinned" className="cursor-pointer">
-                    Pinned
-                  </Label>
-                  <p className="text-xs text-muted-foreground">
-                    Always show on the day view, regardless of schedule dates.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label htmlFor="task-from">Start date (optional)</Label>
-                  <Input
-                    id="task-from"
-                    type="date"
-                    value={scheduledFrom}
-                    max={scheduledTo || undefined}
-                    onChange={(e) => setScheduledFrom(e.target.value)}
-                    className="native-picker-input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="task-to">Due date (optional)</Label>
-                  <Input
-                    id="task-to"
-                    type="date"
-                    value={scheduledTo}
-                    min={scheduledFrom || undefined}
-                    onChange={(e) => setScheduledTo(e.target.value)}
-                    className="native-picker-input"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="task-note">Note</Label>
-              <Textarea id="task-note" value={note} onChange={(e) => setNote(e.target.value)} rows={2} />
-            </div>
-
-            {isEdit && taskDetail && taskDetail.timeEntries.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <Label className="text-muted-foreground">
-                  Linked time entries ({taskDetail._count?.timeEntries ?? taskDetail.timeEntries.length})
-                </Label>
-                <ul className="max-h-40 overflow-y-auto divide-y divide-border/40 rounded-lg bg-muted/30">
-                  {taskDetail.timeEntries.map((e) => (
-                    <li key={e.id} className="px-3 py-2 text-sm">
-                      <div className="font-medium">
-                        {formatTimeRange(e.startAt, e.endAt, e.durationMinutes)}
-                      </div>
-                      {e.note && <div className="text-muted-foreground text-xs">{e.note}</div>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+                {formFooter}
+              </>
             )}
+          </div>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{isEdit ? "Edit task" : "New task"}</DialogTitle>
+              <DialogDescription>
+                Name, project, schedule, external link, status, and notes.
+              </DialogDescription>
+            </DialogHeader>
 
-            <DialogFooter>
-              {isEdit && (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="sm:mr-auto"
-                  onClick={() => void handleDelete()}
-                  disabled={remove.isPending || save.isPending}
-                >
-                  Delete
-                </Button>
-              )}
-              <Button type="button" variant="dialogOutline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={save.isPending || !projectId}>
-                {save.isPending ? "Saving…" : isEdit ? "Save" : "Create"}
-              </Button>
-            </DialogFooter>
-          </form>
+            {isEdit && isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : isEdit && !taskDetail ? null : (
+              <form onSubmit={onSubmit} className="space-y-4">
+                {formFields}
+                {formFooter}
+              </form>
+            )}
+          </>
         )}
       </DialogContent>
     </Dialog>

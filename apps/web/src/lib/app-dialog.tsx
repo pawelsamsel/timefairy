@@ -108,7 +108,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
       {children}
 
       <Dialog open={confirmState != null} onOpenChange={(open) => !open && finishConfirm(false)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent elevated className="max-w-md">
           <DialogHeader>
             <DialogTitle>{confirmState?.title}</DialogTitle>
             <DialogDescription>{confirmState?.description}</DialogDescription>
@@ -129,7 +129,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
       </Dialog>
 
       <Dialog open={alertState != null} onOpenChange={(open) => !open && finishAlert()}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent elevated className="max-w-md">
           <DialogHeader>
             <DialogTitle>{alertState?.title}</DialogTitle>
             <DialogDescription>{alertState?.description}</DialogDescription>
@@ -143,7 +143,7 @@ export function AppDialogProvider({ children }: { children: ReactNode }) {
       </Dialog>
 
       <Dialog open={chooseState != null} onOpenChange={(open) => !open && finishChoose(null)}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent elevated className="max-w-md">
           <DialogHeader>
             <DialogTitle>{chooseState?.title}</DialogTitle>
             <DialogDescription>{chooseState?.description}</DialogDescription>

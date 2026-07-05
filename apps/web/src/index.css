@@ -143,4 +143,26 @@
   .dialog-surface label {
     @apply text-imperial-blue font-medium;
   }
+
+  .dialog-surface-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    max-height: 100dvh !important;
+    margin: 0 !important;
+    transform: none !important;
+    translate: none !important;
+    border-radius: 0 !important;
+  }
+
+  .dialog-surface-fullscreen label {
+    @apply text-foreground font-medium;
+  }
 }

@@ -3,11 +3,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { CalendarDays, ChevronLeft, ChevronRight, List, ListTodo, NotebookPen, Plus } from "lucide-react";
 import { DayViewToolbar } from "@/components/day/day-view-toolbar";
+import {
+  MobileActiveTaskBar,
+  MobileDayHeader,
+  MobileDayTabBar,
+  resolvePrimaryActiveMoment,
+} from "@/components/day/mobile-day-view";
 import { EntrySource, LaneType, TrackTimeMode, type TaskWithRelations, type TimeEntryWithRelations } from "@timefairy/shared-types";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { useTrackingNudges } from "@/hooks/use-tracking-nudges";
+import { useMobileShell } from "@/lib/mobile-shell-context";
 import { api } from "../lib/api";
 import {
   addDays,
-  dayBoundsLocal,
   formatDayLabel,
   formatTimeRange,
   toDateInputValue,
@@ -18,12 +26,17 @@ import {
   extendedDayFetchRange,
 } from "@/lib/entry-time-range";
 import { dropSlotToIsoRange, slotToFormDatetimeLocal, type TimelineDropSlot } from "@/lib/timeline";
+import {
+  resolveMobileGapFillRange,
+  type MobileGapClickPayload,
+} from "@/lib/mobile-day-timeline";
 import { DayTaskPanel } from "@/components/day/day-task-panel";
 import {
   DayTimeline,
   type EntryScheduleChange,
   type TaskDragPayload,
 } from "@/components/day/day-timeline";
+import { MobileDayTimeline } from "@/components/day/mobile-day-timeline";
 import { DayViewSummary } from "@/components/day/day-view-summary";
 import { DayLogPanel, DayLogDateSummary } from "@/components/day/day-log-panel";
 import { getErrorMessage } from "@/lib/errors";
@@ -84,6 +97,9 @@ const DAY_VIEW_DATE_KEY = "timefairy-view-date:dashboard";
 const DAY_VIEW_MINI_CALENDAR_KEY = "timefairy-day-view-mini-calendar";
 const DAY_VIEW_TASKS_PANEL_KEY = "timefairy-day-view-tasks-panel";
 const DAY_VIEW_DAY_LOG_PANEL_KEY = "timefairy-day-view-day-log-panel";
+const MOBILE_DAY_TAB_KEY = "timefairy-mobile-day-tab";
+
+type MobileDayTab = "tasks" | "timeline";
 
 function loadDayViewMode(): DayViewMode {
   const stored = localStorage.getItem(DAY_VIEW_MODE_KEY);
@@ -103,10 +119,16 @@ function loadDayLogPanelVisible(): boolean {
   return localStorage.getItem(DAY_VIEW_DAY_LOG_PANEL_KEY) === "true";
 }
 
+function loadMobileDayTab(): MobileDayTab {
+  return localStorage.getItem(MOBILE_DAY_TAB_KEY) === "timeline" ? "timeline" : "tasks";
+}
+
 export function DashboardPage() {
   const qc = useQueryClient();
   const timeEntryUndo = useTimeEntryUndo();
   const { confirm, choose } = useAppDialog();
+  const isMobile = useIsMobileLayout();
+  const { setFab } = useMobileShell();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedDate, setSelectedDate] = useSessionDate(DAY_VIEW_DATE_KEY);
   const [display, setDisplay] = useDayViewDisplay();
@@ -116,6 +138,7 @@ export function DashboardPage() {
   const [tasksPanelVisible, setTasksPanelVisible] = useState(() => loadTasksPanelVisible());
   const [dayLogPanelVisible, setDayLogPanelVisible] = useState(() => loadDayLogPanelVisible());
   const [timelineZoom, setTimelineZoom] = useState<TimelineZoomLevel>(() => loadTimelineZoomLevel());
+  const [mobileTab, setMobileTab] = useState<MobileDayTab>(() => loadMobileDayTab());
   const [isDraggingTask, setIsDraggingTask] = useState(false);
   const [editEntry, setEditEntry] = useState<TimeEntryWithRelations | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -178,6 +201,11 @@ export function DashboardPage() {
   useEffect(() => {
     saveTimelineZoomLevel(timelineZoom);
   }, [timelineZoom]);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    localStorage.setItem(MOBILE_DAY_TAB_KEY, mobileTab);
+  }, [isMobile, mobileTab]);
 
   useEffect(() => {
     const dateParam = searchParams.get("date");
@@ -451,6 +479,18 @@ export function DashboardPage() {
     setCreateOpen(true);
   }
 
+  useEffect(() => {
+    if (!isMobile) {
+      setFab(null);
+      return;
+    }
+    setFab({
+      onClick: () => openCreateDialog(),
+      ariaLabel: "Add log",
+    });
+    return () => setFab(null);
+  }, [isMobile, setFab]);
+
   function handleTaskDrop(payload: TaskDragPayload, slot: TimelineDropSlot) {
     setIsDraggingTask(false);
     createFromDrop.mutate({ payload, slot });
@@ -467,6 +507,21 @@ export function DashboardPage() {
       startAt: startLocal,
       useEndTime: true,
       endAt: endLocal,
+    });
+  }
+
+  function handleMobileGapLog({ slot, dockSide }: MobileGapClickPayload) {
+    const fill = resolveMobileGapFillRange(slot, selectedDate, timelineViewConfig, { dockSide });
+    const { startAt, endAt } = slotToFormDatetimeLocal(
+      selectedDate,
+      { startMinutes: fill.startMinutes, durationMinutes: fill.durationMinutes },
+      fill.durationMinutes,
+    );
+    openCreateDialog({
+      kind: "block",
+      startAt,
+      useEndTime: true,
+      endAt,
     });
   }
 
@@ -488,6 +543,164 @@ export function DashboardPage() {
       : null;
   const today = useMemo(() => toDateInputValue(new Date()), []);
   const isTodaySelected = selectedDate === today;
+
+  const activeMoments = useMemo(
+    () => findAllActiveTaskMoments(allEntries, selectedDate),
+    [allEntries, selectedDate],
+  );
+
+  const primaryActiveMoment = useMemo(
+    () => resolvePrimaryActiveMoment(activeMoments),
+    [activeMoments],
+  );
+
+  const projectColorById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.color])),
+    [projects],
+  );
+
+  useTrackingNudges({
+    enabled: isMobile && isTodaySelected,
+    selectedDate,
+    today,
+    workHoursPreferences,
+    activeMoments,
+    dayEntries,
+    onIdleNudge: () => {
+      void confirm({
+        title: "No time tracked",
+        description:
+          "You have not started tracking any task. Tap Start on a task when you begin work.",
+        confirmLabel: "Got it",
+      });
+    },
+    onCheckInNudge: async (moment) => {
+      const taskTitle = moment.task?.title ?? moment.title ?? "this task";
+      const stillWorking = await confirm({
+        title: "Still working?",
+        description: `You have been on "${taskTitle}" for a while. Still on this task?`,
+        confirmLabel: "Yes, continue",
+        cancelLabel: "Stop tracking",
+      });
+      if (stillWorking) return true;
+
+      const stopTarget = taskForQuickLog(moment);
+      if (stopTarget) {
+        await quickStopTask.mutateAsync({
+          ...stopTarget,
+          title: moment.task?.title ?? undefined,
+        });
+      }
+      return false;
+    },
+  });
+
+  const dialogs = (
+    <>
+      <TimeEntryCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        selectedDate={selectedDate}
+        initialValues={createInitial}
+      />
+
+      <TimeEntryEditDialog
+        open={editEntry !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditEntry(null);
+        }}
+        entry={editEntry}
+      />
+
+    </>
+  );
+
+  if (isMobile) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-3">
+        <MobileDayHeader
+          selectedDate={selectedDate}
+          totalMinutes={allTotalMinutes}
+          dailyWorkHours={workHoursPreferences.dailyWorkHours}
+          onSelectDate={setSelectedDate}
+        />
+
+        <MobileDayTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
+
+        {loadError && (
+          <p className="shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+            {loadError}
+          </p>
+        )}
+
+        {quickLogError && (
+          <p className="shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+            {quickLogError}
+          </p>
+        )}
+
+        {(mobileTab === "timeline" ? scheduleError || dropError || copyError : false) && (
+          <p className="shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+            {scheduleError || dropError || copyError}
+          </p>
+        )}
+
+        {primaryActiveMoment && (
+          <MobileActiveTaskBar
+            moment={primaryActiveMoment}
+            projectColor={
+              primaryActiveMoment.projectId
+                ? (projectColorById.get(primaryActiveMoment.projectId) ?? null)
+                : null
+            }
+            pending={quickLogTaskId != null}
+            onStop={() => {
+              const stopTarget = taskForQuickLog(primaryActiveMoment);
+              if (!stopTarget) return;
+              quickStopTask.mutate({
+                ...stopTarget,
+                title: primaryActiveMoment.task?.title ?? undefined,
+              });
+            }}
+          />
+        )}
+
+        <div className="flex min-h-0 flex-1 flex-col">
+          {mobileTab === "tasks" ? (
+            <DayTaskPanel
+              selectedDate={selectedDate}
+              variant="mobile"
+              onDragStart={() => setIsDraggingTask(true)}
+              onDragEnd={() => setIsDraggingTask(false)}
+              activeTaskIds={activeTaskIds}
+              pendingTaskId={quickLogTaskId}
+              onQuickToggle={handleQuickToggle}
+            />
+          ) : (
+            <MobileDayTimeline
+              className="min-h-0 flex-1"
+              dateStr={selectedDate}
+              entries={entries}
+              display={display}
+              clientNames={clientNames}
+              projectClientIds={projectClientIds}
+              onEntryClick={setEditEntry}
+              onGapClick={handleMobileGapLog}
+            />
+          )}
+        </div>
+
+        <DayViewSummary
+          totalMinutes={totalMinutes}
+          entryCount={entries.length}
+          filtersActive={filtersActive}
+          allTotalMinutes={allTotalMinutes}
+        />
+
+        {dialogs}
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -738,20 +951,7 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <TimeEntryCreateDialog
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-        selectedDate={selectedDate}
-        initialValues={createInitial}
-      />
-
-      <TimeEntryEditDialog
-        open={editEntry !== null}
-        onOpenChange={(open) => {
-          if (!open) setEditEntry(null);
-        }}
-        entry={editEntry}
-      />
+      {dialogs}
     </div>
   );
 }

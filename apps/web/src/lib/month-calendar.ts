@@ -1,7 +1,7 @@
 import type { TimeEntryWithRelations } from "@timefairy/shared-types";
 import type { WorkHoursPreferences } from "@timefairy/shared-types";
 import { addDays, toDateInputValue } from "./datetime";
-import { entryAffectedDates, entryLocalDateKey, entryMinutesOnDay } from "./entry-time-range";
+import { entryAffectedDates, entryMinutesOnDay } from "./entry-time-range";
 import { isWorkDay } from "./work-hours";
 
 export type DayLogStatus = "none" | "below" | "met" | "off";

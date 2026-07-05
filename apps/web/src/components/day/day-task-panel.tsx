@@ -37,6 +37,7 @@ type DayTaskPanelProps = {
   activeTaskIds: Set<string>;
   pendingTaskId?: string | null;
   onQuickToggle: (task: TaskWithRelations) => void;
+  variant?: "desktop" | "mobile";
 };
 
 export function DayTaskPanel({
@@ -46,7 +47,9 @@ export function DayTaskPanel({
   activeTaskIds,
   pendingTaskId,
   onQuickToggle,
+  variant = "desktop",
 }: DayTaskPanelProps) {
+  const mobile = variant === "mobile";
   const qc = useQueryClient();
   const listRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -98,9 +101,18 @@ export function DayTaskPanel({
   }, [tasks, sortMode, selectedDate, today, scopeFilter, selectedProjectIds]);
 
   const displayTasks = useMemo(() => {
-    if (!manualOrder || !reorderingTaskId) return activeTasks;
-    return previewTaskOrder(activeTasks, reorderingTaskId, previewInsertIndex);
-  }, [activeTasks, manualOrder, previewInsertIndex, reorderingTaskId]);
+    const base =
+      !manualOrder || !reorderingTaskId
+        ? activeTasks
+        : previewTaskOrder(activeTasks, reorderingTaskId, previewInsertIndex);
+    if (!mobile) return base;
+    return [...base].sort((a, b) => {
+      const aActive = activeTaskIds.has(a.id) ? 0 : 1;
+      const bActive = activeTaskIds.has(b.id) ? 0 : 1;
+      if (aActive !== bActive) return aActive - bActive;
+      return 0;
+    });
+  }, [activeTasks, activeTaskIds, manualOrder, mobile, previewInsertIndex, reorderingTaskId]);
 
   function handleSortModeChange(value: TaskSortMode) {
     setSortMode(value);
@@ -194,8 +206,11 @@ export function DayTaskPanel({
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col">
-      <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold leading-none tracking-tight">Tasks</h3>
+      <div className={cn("mb-2 flex shrink-0 items-center justify-between gap-2", mobile && "mb-3")}>
+        {!mobile && <h3 className="text-sm font-semibold leading-none tracking-tight">Tasks</h3>}
+        {mobile && (
+          <h3 className="text-sm font-semibold leading-none tracking-tight">Today&apos;s tasks</h3>
+        )}
         <div className="flex items-center gap-1">
           <Popover>
             <DelayedTooltip label="Filter tasks">
@@ -323,7 +338,8 @@ export function DayTaskPanel({
                   isActive={activeTaskIds.has(task.id)}
                   isPending={pendingTaskId === task.id}
                   isDragging={reorderingTaskId === task.id}
-                  manualOrder={manualOrder}
+                  manualOrder={manualOrder && !mobile}
+                  mobile={mobile}
                   onDragStart={onDragStart}
                   onReorderDragStart={() => {
                     reorderDragRef.current = { taskId: task.id, insertIndex: sourceIndex };
@@ -445,7 +461,7 @@ function setTaskRowDragImage(event: DragEvent, row: HTMLElement) {
   clone.style.transition = "none";
 
   document.body.appendChild(clone);
-  event.dataTransfer.setDragImage(
+  event.dataTransfer?.setDragImage(
     clone,
     event.clientX - rect.left,
     event.clientY - rect.top,
@@ -464,6 +480,7 @@ const TaskRow = forwardRef(function TaskRow(
     isPending,
     isDragging = false,
     manualOrder,
+    mobile = false,
     onDragStart,
     onReorderDragStart,
     onDragEnd,
@@ -478,6 +495,7 @@ const TaskRow = forwardRef(function TaskRow(
     isPending: boolean;
     isDragging?: boolean;
     manualOrder: boolean;
+    mobile?: boolean;
     onDragStart: () => void;
     onReorderDragStart: () => void;
     onDragEnd: () => void;
@@ -499,8 +517,12 @@ const TaskRow = forwardRef(function TaskRow(
   return (
     <div
       ref={ref}
-      draggable
+      draggable={!mobile}
       onDragStart={(e) => {
+        if (mobile) {
+          e.preventDefault();
+          return;
+        }
         if ((e.target as HTMLElement).closest("[data-no-row-drag]")) {
           e.preventDefault();
           return;
@@ -516,14 +538,15 @@ const TaskRow = forwardRef(function TaskRow(
       }}
       onDragEnd={onDragEnd}
       className={cn(
-        "relative flex w-full cursor-grab items-start gap-1 overflow-hidden rounded-md border border-border/50 bg-card py-1.5 pl-2 pr-1.5 text-sm shadow-sm active:cursor-grabbing",
+        "relative flex w-full items-start gap-1 overflow-hidden rounded-md border border-border/50 bg-card text-sm shadow-sm",
+        mobile ? "cursor-default py-2 pl-2.5 pr-2" : "cursor-grab py-1.5 pl-2 pr-1.5 active:cursor-grabbing",
         "transition-[transform,box-shadow,border-color,background-color]",
-        !isDragging && "hover:border-border hover:bg-white hover:shadow-md dark:hover:bg-card",
+        !isDragging && !mobile && "hover:border-border hover:bg-white hover:shadow-md dark:hover:bg-card",
         isActive && !isDragging && "border-emerald-500/35 bg-emerald-50/60 dark:bg-emerald-950/25",
         isDragging &&
           "border-primary/60 border-dashed bg-primary/5 opacity-35 shadow-none ring-0",
       )}
-      title={manualOrder ? "Drag to reorder or drop on timeline" : "Drag to timeline"}
+      title={mobile ? undefined : manualOrder ? "Drag to reorder or drop on timeline" : "Drag to timeline"}
     >
       <div
         className="absolute inset-y-0 left-0 w-1"
@@ -531,12 +554,14 @@ const TaskRow = forwardRef(function TaskRow(
         aria-hidden
       />
 
-      <div
-        className="mt-0.5 shrink-0 rounded p-1 text-muted-foreground pointer-events-none"
-        aria-hidden
-      >
-        <GripVertical className="h-4 w-4" />
-      </div>
+      {!mobile && (
+        <div
+          className="mt-0.5 shrink-0 rounded p-1 text-muted-foreground pointer-events-none"
+          aria-hidden
+        >
+          <GripVertical className="h-4 w-4" />
+        </div>
+      )}
 
       <div className="min-w-0 flex-1 py-0.5 select-none">
         <div className="flex min-w-0 items-center gap-1">
@@ -581,7 +606,8 @@ const TaskRow = forwardRef(function TaskRow(
         data-no-row-drag
         draggable={false}
         className={cn(
-          "mt-0.5 h-7 w-7 shrink-0 cursor-pointer",
+          "mt-0.5 shrink-0 cursor-pointer",
+          mobile ? "h-10 w-10" : "h-7 w-7",
           isActive
             ? "text-amber-600 hover:text-amber-700"
             : "text-muted-foreground hover:text-emerald-600",
@@ -591,7 +617,7 @@ const TaskRow = forwardRef(function TaskRow(
         title={isActive ? "Stop tracking" : "Start tracking"}
         aria-label={isActive ? `Stop tracking ${task.title}` : `Start tracking ${task.title}`}
       >
-        {isActive ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+        {isActive ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
       </Button>
     </div>
   );

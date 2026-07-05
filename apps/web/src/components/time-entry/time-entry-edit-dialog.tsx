@@ -1,9 +1,12 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy } from "lucide-react";
+import { Copy, Trash2 } from "lucide-react";
 import { EntrySource, type TimeEntryWithRelations } from "@timefairy/shared-types";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import { useAppDialog } from "@/lib/app-dialog";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { cn } from "@/lib/utils";
 import { snapshotForUpdate } from "@/lib/undo/time-entry-undo";
 import { useTimeEntryUndo } from "@/lib/undo/undo-context";
 import {
@@ -51,6 +54,9 @@ type Props = {
 export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
   const qc = useQueryClient();
   const timeEntryUndo = useTimeEntryUndo();
+  const { confirm } = useAppDialog();
+  const isMobile = useIsMobileLayout();
+  const formId = "time-entry-edit-form";
   const [laneId, setLaneId] = useState<string>("");
   const [projectId, setProjectId] = useState<string | undefined>();
   const [taskId, setTaskId] = useState<string | undefined>();
@@ -287,6 +293,18 @@ export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
     save.mutate();
   }
 
+  async function handleDelete() {
+    if (!entry) return;
+    const name = title.trim() || entry.title || entry.task?.title || "this entry";
+    const ok = await confirm({
+      title: "Delete entry",
+      description: `Delete "${name}"? This cannot be undone.`,
+      confirmLabel: "Delete",
+      destructive: true,
+    });
+    if (ok) remove.mutate();
+  }
+
   function switchFormKind(next: EntryFormKind | "duration") {
     setFormKind(next);
     if (next === "event") {
@@ -301,198 +319,240 @@ export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
     }
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{formKind === "event" ? "Edit event" : "Edit entry"}</DialogTitle>
-          <DialogDescription>Change project, name, time, or note.</DialogDescription>
-        </DialogHeader>
+  const dialogTitle = formKind === "event" ? "Edit event" : "Edit entry";
 
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant={formKind === "block" ? "default" : "outline"}
-              onClick={() => switchFormKind("block")}
-            >
-              Time block
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={formKind === "event" ? "default" : "outline"}
-              onClick={() => switchFormKind("event")}
-            >
-              Event
-            </Button>
-            {entry && entryFormKindFromEntry(entry) === "duration" && (
-              <Button
-                type="button"
-                size="sm"
-                variant={formKind === "duration" ? "default" : "outline"}
-                onClick={() => switchFormKind("duration")}
-              >
-                Duration only
-              </Button>
-            )}
-          </div>
+  const formFields = (
+    <>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={formKind === "block" ? "default" : "outline"}
+          onClick={() => switchFormKind("block")}
+        >
+          Time block
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant={formKind === "event" ? "default" : "outline"}
+          onClick={() => switchFormKind("event")}
+        >
+          Event
+        </Button>
+        {entry && entryFormKindFromEntry(entry) === "duration" && (
+          <Button
+            type="button"
+            size="sm"
+            variant={formKind === "duration" ? "default" : "outline"}
+            onClick={() => switchFormKind("duration")}
+          >
+            Duration only
+          </Button>
+        )}
+      </div>
 
-          {formKind === "block" && (
-            <div className="space-y-2">
-              <Label>Lane</Label>
-              <Select value={laneId} onValueChange={setLaneId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select lane" />
-                </SelectTrigger>
-                <SelectContent>
-                  {lanes
-                    .filter((lane) => lane.type !== "EVENTS")
-                    .map((lane) => (
-                      <SelectItem key={lane.id} value={lane.id}>
-                        <span className="flex items-center gap-2">
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: lane.color }}
-                          />
-                          {lane.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+      <div className="space-y-2">
+        <Label htmlFor="editTitle">Name</Label>
+        <Input
+          id="editTitle"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder={titlePlaceholder}
+        />
+      </div>
 
-          <ProjectTaskPicker
-            projects={projects}
-            tasks={projectTasks}
-            projectId={projectId}
-            taskId={taskId}
-            taskReference={taskReference}
-            projectOptional={formKind === "event"}
-            onProjectChange={(id) => {
-              setProjectId(id);
-              setTaskId(undefined);
-              setTaskReference("");
-            }}
-            onTaskChange={setTaskId}
-            onTaskReferenceChange={setTaskReference}
-            onTaskCreated={(task) => {
-              setTaskId(task.id);
-              if (task.externalId) setTaskReference(task.externalId);
-            }}
+      {formKind === "block" && (
+        <div className="space-y-2">
+          <Label>Lane</Label>
+          <Select value={laneId} onValueChange={setLaneId}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select lane" />
+            </SelectTrigger>
+            <SelectContent>
+              {lanes
+                .filter((lane) => lane.type !== "EVENTS")
+                .map((lane) => (
+                  <SelectItem key={lane.id} value={lane.id}>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: lane.color }}
+                      />
+                      {lane.name}
+                    </span>
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <ProjectTaskPicker
+        projects={projects}
+        tasks={projectTasks}
+        projectId={projectId}
+        taskId={taskId}
+        taskReference={taskReference}
+        projectOptional={formKind === "event"}
+        onProjectChange={(id) => {
+          setProjectId(id);
+          setTaskId(undefined);
+          setTaskReference("");
+        }}
+        onTaskChange={setTaskId}
+        onTaskReferenceChange={setTaskReference}
+        onTaskCreated={(task) => {
+          setTaskId(task.id);
+          if (task.externalId) setTaskReference(task.externalId);
+        }}
+      />
+
+      {formKind === "event" || formKind === "block" ? (
+        <>
+          <DateTimeField
+            id="editStartAt"
+            label={formKind === "event" ? "When" : "Start"}
+            value={startAt}
+            onChange={setStartAt}
+            required
           />
-
-          <div className="space-y-2">
-            <Label htmlFor="editTitle">Name</Label>
-            <Input
-              id="editTitle"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder={titlePlaceholder}
-            />
-          </div>
-
-          {formKind === "event" || formKind === "block" ? (
+          {formKind === "block" && (
             <>
-              <DateTimeField
-                id="editStartAt"
-                label={formKind === "event" ? "When" : "Start"}
-                value={startAt}
-                onChange={setStartAt}
-                required
-              />
-              {formKind === "block" && (
-                <>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="editUseEnd"
-                      checked={useEndTime}
-                      onCheckedChange={(v) => {
-                        const on = v === true;
-                        setUseEndTime(on);
-                        if (on && !endAt && startAt) {
-                          const end = new Date(startAt);
-                          end.setMinutes(end.getMinutes() + 60);
-                          setEndAt(toDatetimeLocalValue(end));
-                        }
-                        if (!on) setEndAt("");
-                      }}
-                    />
-                    <Label htmlFor="editUseEnd" className="cursor-pointer font-normal">
-                      Set end time
-                    </Label>
-                  </div>
-                  {useEndTime && (
-                    <DateTimeField
-                      id="editEndAt"
-                      label="End"
-                      value={endAt}
-                      min={startAt}
-                      onChange={setEndAt}
-                      required
-                    />
-                  )}
-                </>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="editUseEnd"
+                  checked={useEndTime}
+                  onCheckedChange={(v) => {
+                    const on = v === true;
+                    setUseEndTime(on);
+                    if (on && !endAt && startAt) {
+                      const end = new Date(startAt);
+                      end.setMinutes(end.getMinutes() + 60);
+                      setEndAt(toDatetimeLocalValue(end));
+                    }
+                    if (!on) setEndAt("");
+                  }}
+                />
+                <Label htmlFor="editUseEnd" className="cursor-pointer font-normal">
+                  Set end time
+                </Label>
+              </div>
+              {useEndTime && (
+                <DateTimeField
+                  id="editEndAt"
+                  label="End"
+                  value={endAt}
+                  min={startAt}
+                  onChange={setEndAt}
+                  required
+                />
               )}
             </>
-          ) : (
-            <div className="space-y-2">
-              <Label htmlFor="editDuration">Duration (hours)</Label>
-              <Input
-                id="editDuration"
-                type="number"
-                step="0.25"
-                min="0.25"
-                value={durationHours}
-                onChange={(e) => setDurationHours(e.target.value)}
-                required
-              />
-            </div>
           )}
+        </>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="editDuration">Duration (hours)</Label>
+          <Input
+            id="editDuration"
+            type="number"
+            step="0.25"
+            min="0.25"
+            value={durationHours}
+            onChange={(e) => setDurationHours(e.target.value)}
+            required
+          />
+        </div>
+      )}
 
-          <div className="space-y-2">
-            <Label htmlFor="editNote">Note</Label>
-            <Textarea id="editNote" value={note} onChange={(e) => setNote(e.target.value)} />
+      <div className="space-y-2">
+        <Label htmlFor="editNote">Note</Label>
+        <Textarea id="editNote" value={note} onChange={(e) => setNote(e.target.value)} />
+      </div>
+
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </>
+  );
+
+  const formFooter = (
+    <DialogFooter
+      className={cn(
+        "flex-row flex-nowrap items-center justify-between gap-2 sm:justify-between [&_button]:min-w-0",
+        isMobile &&
+          "-mx-0 mt-0 shrink-0 rounded-none border-t border-border/40 bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]",
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="icon"
+          variant="destructive"
+          disabled={actionPending}
+          onClick={() => void handleDelete()}
+          aria-label={remove.isPending ? "Deleting…" : "Delete entry"}
+          title="Delete"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          disabled={actionPending || !laneId || (formKind === "block" && !projectId)}
+          onClick={() => {
+            setError("");
+            copy.mutate();
+          }}
+          aria-label={copy.isPending ? "Copying…" : "Copy entry"}
+          title="Copy"
+        >
+          <Copy className="h-4 w-4" />
+        </Button>
+      </div>
+      <div className="flex items-center gap-2 [&_button]:min-w-[5.5rem]">
+        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          Cancel
+        </Button>
+        <Button type="submit" form={isMobile ? formId : undefined} disabled={actionPending || !laneId}>
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
+      </div>
+    </DialogFooter>
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showClose={false}
+        fullscreen={isMobile}
+        className={cn(isMobile && "flex flex-col", !isMobile && "max-w-md max-h-[90vh] overflow-y-auto")}
+      >
+        {isMobile ? (
+          <div className="flex h-full min-h-0 flex-1 flex-col">
+            <DialogHeader className="shrink-0 space-y-1 border-b border-border/40 px-4 pb-3 pt-4 text-left">
+              <DialogTitle className="text-foreground">{dialogTitle}</DialogTitle>
+              <DialogDescription>Change project, name, time, or note.</DialogDescription>
+            </DialogHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+              <form id={formId} onSubmit={onSubmit} className="space-y-4">
+                {formFields}
+              </form>
+            </div>
+            {formFooter}
           </div>
-
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <DialogFooter className="flex-col gap-2 sm:flex-row sm:justify-between">
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={actionPending}
-                onClick={() => remove.mutate()}
-              >
-                {remove.isPending ? "Deleting…" : "Delete"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={actionPending || !laneId || (formKind === "block" && !projectId)}
-                onClick={() => {
-                  setError("");
-                  copy.mutate();
-                }}
-              >
-                <Copy className="h-4 w-4" />
-                {copy.isPending ? "Copying…" : "Copy"}
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={actionPending || !laneId}>
-                {save.isPending ? "Saving…" : "Save"}
-              </Button>
-            </div>
-          </DialogFooter>
-        </form>
+        ) : (
+          <>
+            <DialogHeader>
+              <DialogTitle>{dialogTitle}</DialogTitle>
+              <DialogDescription>Change project, name, time, or note.</DialogDescription>
+            </DialogHeader>
+            <form onSubmit={onSubmit} className="space-y-4">
+              {formFields}
+              {formFooter}
+            </form>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

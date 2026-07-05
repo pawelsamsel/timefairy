@@ -1,24 +1,14 @@
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   ArrowLeft,
-  BarChart3,
-  Briefcase,
-  Building2,
-  Calendar,
-  CalendarDays,
   ChevronUp,
-  Clock,
-  Columns3,
-  Database,
-  ListTodo,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   Shield,
   User,
-  Users,
 } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { useAppMode } from "../lib/app-mode";
@@ -26,14 +16,21 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Logo } from "@/components/logo";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { MobileAppNav } from "@/components/layout/mobile-app-nav";
+import { MobileMenuButton } from "@/components/layout/mobile-menu-button";
+import { MobileSideMenu } from "@/components/layout/mobile-side-menu";
+import { MobileShellProvider } from "@/lib/mobile-shell-context";
+import {
+  adminAppNav,
+  mainAppNav,
+  settingsAppNav,
+  type AppNavItem,
+} from "@/lib/app-navigation";
 
 const SIDEBAR_COLLAPSED_KEY = "timefairy-sidebar-collapsed";
 
-type NavItem = {
-  to: string;
-  label: string;
-  icon: ComponentType<{ className?: string }>;
-};
+type NavItem = AppNavItem;
 
 const navLinkClass = ({ isActive }: { isActive: boolean }, collapsed: boolean) =>
   cn(
@@ -44,23 +41,9 @@ const navLinkClass = ({ isActive }: { isActive: boolean }, collapsed: boolean) =
       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
   );
 
-const appNav: NavItem[] = [
-  { to: "/app/dashboard", label: "Day", icon: CalendarDays },
-  { to: "/app/calendar", label: "Calendar", icon: Calendar },
-  { to: "/app/tasks", label: "Tasks", icon: ListTodo },
-  { to: "/app/clients", label: "Clients", icon: Building2 },
-  { to: "/app/projects", label: "Projects", icon: Briefcase },
-  { to: "/app/reports", label: "Reports", icon: BarChart3 },
-];
-
-const settingsNav: NavItem[] = [
-  { to: "/app/settings/profile", label: "Profile", icon: User },
-  { to: "/app/settings/work-hours", label: "Work hours", icon: Clock },
-  { to: "/app/settings/lanes", label: "Lanes", icon: Columns3 },
-  { to: "/app/settings/data", label: "Manage Data", icon: Database },
-];
-
-const adminNav: NavItem[] = [{ to: "/app/admin/users", label: "Users", icon: Users }];
+const appNav = mainAppNav;
+const settingsNav = settingsAppNav;
+const adminNav = adminAppNav;
 
 const menuItemClass =
   "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-sm text-left transition-colors hover:bg-accent hover:text-accent-foreground";
@@ -90,8 +73,10 @@ export function Layout() {
   const { isAdminMode, canUseAdminMode, enterAdminMode, exitAdminMode } = useAppMode();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => loadSidebarCollapsed());
+  const isMobile = useIsMobileLayout();
   const location = useLocation();
   const isSettingsArea = !isAdminMode && location.pathname.startsWith("/app/settings");
+  const isDashboard = location.pathname === "/app/dashboard";
   const homeTo = isAdminMode ? "/app/admin/users" : "/app/dashboard";
   const logoSubtitle = isAdminMode ? "Admin" : isSettingsArea ? "Settings" : undefined;
 
@@ -100,7 +85,9 @@ export function Layout() {
   }, [sidebarCollapsed]);
 
   return (
+    <MobileShellProvider>
     <div className="flex h-screen min-h-0 overflow-hidden bg-background">
+      {!isMobile && (
       <aside
         className={cn(
           "shrink-0 border-r border-border/30 p-3 flex flex-col gap-4 transition-[width] duration-200",
@@ -285,9 +272,23 @@ export function Layout() {
           </Popover>
         </div>
       </aside>
-      <main className="flex min-h-0 flex-1 flex-col overflow-auto p-4">
+      )}
+      <main
+        className={cn(
+          "flex min-h-0 flex-1 flex-col overflow-auto p-3 md:p-4",
+          isMobile && "pb-[calc(6rem+env(safe-area-inset-bottom))]",
+        )}
+      >
         <Outlet />
       </main>
+      {isMobile && (
+        <>
+          {!isDashboard && <MobileMenuButton />}
+          <MobileSideMenu />
+          <MobileAppNav />
+        </>
+      )}
     </div>
+    </MobileShellProvider>
   );
 }
