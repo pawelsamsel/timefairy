@@ -56,7 +56,7 @@ export function LanesPage() {
     <div className="space-y-6 max-w-3xl">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Lanes</h1>
+          <h1 className="hidden text-xl font-semibold tracking-tight md:block">Lanes</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Each account has its own lanes (Główny, Międzyczas, …). Główny cannot be removed.
           </p>

@@ -3,7 +3,7 @@ import {
   BarChart3,
   Briefcase,
   Building2,
-  Calendar,
+  Calendar1,
   CalendarDays,
   Clock,
   Columns3,
@@ -20,8 +20,8 @@ export type AppNavItem = {
 };
 
 export const mainAppNav: AppNavItem[] = [
-  { to: "/app/dashboard", label: "Day", icon: CalendarDays },
-  { to: "/app/calendar", label: "Calendar", icon: Calendar },
+  { to: "/app/dashboard", label: "Day", icon: Calendar1 },
+  { to: "/app/calendar", label: "Calendar", icon: CalendarDays },
   { to: "/app/tasks", label: "Tasks", icon: ListTodo },
   { to: "/app/clients", label: "Clients", icon: Building2 },
   { to: "/app/projects", label: "Projects", icon: Briefcase },
@@ -38,6 +38,6 @@ export const settingsAppNav: AppNavItem[] = [
 export const adminAppNav: AppNavItem[] = [{ to: "/app/admin/users", label: "Users", icon: Users }];
 
 export const mobileBottomNav: AppNavItem[] = [
-  { to: "/app/dashboard", label: "Day", icon: CalendarDays },
-  { to: "/app/calendar", label: "Calendar", icon: Calendar },
+  { to: "/app/dashboard", label: "Day", icon: Calendar1 },
+  { to: "/app/calendar", label: "Calendar", icon: CalendarDays },
 ];

@@ -6,6 +6,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { useAppDialog } from "@/lib/app-dialog";
 import { formatTimeRange } from "@/lib/datetime";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { usePinnedProjects } from "@/hooks/use-pinned-projects";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,6 +51,7 @@ export function TaskDetailsDialog({
   const isMobile = useIsMobileLayout();
   const isEdit = taskId != null;
   const formId = "task-details-form";
+  const { sortProjects } = usePinnedProjects();
 
   const { data: projects = [] } = useQuery({
     queryKey: ["projects"],
@@ -67,10 +69,10 @@ export function TaskDetailsDialog({
     const base = clientId ? projects.filter((p) => p.clientId === clientId) : projects;
     if (taskDetail && !base.some((p) => p.id === taskDetail.projectId)) {
       const current = projects.find((p) => p.id === taskDetail.projectId);
-      return current ? [...base, current] : base;
+      return sortProjects(current ? [...base, current] : base);
     }
-    return base;
-  }, [projects, clientId, taskDetail]);
+    return sortProjects(base);
+  }, [projects, clientId, taskDetail, sortProjects]);
 
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -394,7 +396,7 @@ export function TaskDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent fullscreen={isMobile} className={cn(isMobile && "flex flex-col", !isMobile && "sm:max-w-lg max-h-[90vh] overflow-y-auto")}>
+      <DialogContent fullscreen={isMobile} className={cn(isMobile && "flex flex-col", !isMobile && "sm:max-w-lg")}>
         {isMobile ? (
           <div className="flex h-full min-h-0 flex-1 flex-col">
             <DialogHeader className="shrink-0 space-y-0 border-b border-border/40 px-4 pb-3 pt-4 text-left">

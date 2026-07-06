@@ -26,9 +26,6 @@ export function WorkHoursSettingsPage() {
   const [dailyWorkHours, setDailyWorkHours] = useState(String(DEFAULT_WORK_HOURS_PREFERENCES.dailyWorkHours));
   const [includeSaturdays, setIncludeSaturdays] = useState(DEFAULT_WORK_HOURS_PREFERENCES.includeSaturdays);
   const [includeSundays, setIncludeSundays] = useState(DEFAULT_WORK_HOURS_PREFERENCES.includeSundays);
-  const [onlyBillableProjects, setOnlyBillableProjects] = useState(
-    DEFAULT_WORK_HOURS_PREFERENCES.onlyBillableProjects,
-  );
   const [trackTimeMode, setTrackTimeMode] = useState<WorkHoursPreferences["trackTimeMode"]>(
     DEFAULT_WORK_HOURS_PREFERENCES.trackTimeMode,
   );
@@ -43,7 +40,6 @@ export function WorkHoursSettingsPage() {
     setDailyWorkHours(String(prefsQuery.data.dailyWorkHours));
     setIncludeSaturdays(prefsQuery.data.includeSaturdays);
     setIncludeSundays(prefsQuery.data.includeSundays);
-    setOnlyBillableProjects(prefsQuery.data.onlyBillableProjects);
     setTrackTimeMode(prefsQuery.data.trackTimeMode);
     setMinimalTaskMinutes(String(prefsQuery.data.minimalTaskMinutes));
     setUseTimeGrid(prefsQuery.data.useTimeGrid);
@@ -63,7 +59,6 @@ export function WorkHoursSettingsPage() {
         dailyWorkHours: parsedHours,
         includeSaturdays,
         includeSundays,
-        onlyBillableProjects,
         trackTimeMode,
         minimalTaskMinutes: parsedMinimal,
         useTimeGrid,
@@ -92,7 +87,7 @@ export function WorkHoursSettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
-        <h1 className="text-xl font-semibold tracking-tight">Work hours</h1>
+        <h1 className="hidden text-xl font-semibold tracking-tight md:block">Work hours</h1>
         <p className="text-sm text-muted-foreground mt-1">
           Global defaults for calendars and daily targets. Clients can override these individually.
         </p>
@@ -151,8 +146,7 @@ export function WorkHoursSettingsPage() {
         <CardHeader>
           <CardTitle>Defaults</CardTitle>
           <CardDescription>
-            Used when no client-specific override applies. Billable means projects with hourly rate
-            above zero.
+            Used when no client-specific override applies.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -218,14 +212,6 @@ export function WorkHoursSettingsPage() {
                 />
                 Include Sundays
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={onlyBillableProjects}
-                  onCheckedChange={(checked) => setOnlyBillableProjects(checked === true)}
-                  disabled={prefsQuery.isLoading}
-                />
-                Only billable projects
-              </label>
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
@@ -249,7 +235,6 @@ export function WorkHoursSettingsPage() {
           Current effective defaults: {effective.dailyWorkHours}h/day
           {effective.includeSaturdays ? ", Saturdays included" : ""}
           {effective.includeSundays ? ", Sundays included" : ""}
-          {effective.onlyBillableProjects ? ", billable only" : ""}
           {effective.useTimeGrid ? `, ${effective.minimalTaskMinutes} min grid` : ""}.
         </CardContent>
       </Card>

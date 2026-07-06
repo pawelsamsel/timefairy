@@ -6,6 +6,7 @@ import type {
 } from "@timefairy/shared-types";
 import { DEFAULT_WORK_HOURS_PREFERENCES } from "@timefairy/shared-types";
 import type { DayViewFilters } from "./day-view-preferences";
+import { entryMinutesOnDay } from "./entry-time-range";
 
 export function isWorkDay(dateStr: string, prefs: WorkHoursPreferences): boolean {
   const [year, month, day] = dateStr.split("-").map(Number);
@@ -44,12 +45,23 @@ export function filterBillableEntries(
   onlyBillable: boolean,
 ): TimeEntryWithRelations[] {
   if (!onlyBillable) return entries;
+  if (projects.length === 0) return [];
   const billableProjectIds = new Set(
-    projects.filter((project) => project.hourlyRate > 0).map((project) => project.id),
+    projects.filter((project) => project.isBillable).map((project) => project.id),
   );
   return entries.filter(
     (entry) => entry.projectId != null && billableProjectIds.has(entry.projectId),
   );
+}
+
+export function sumEntryMinutesOnDay(
+  entries: readonly TimeEntryWithRelations[],
+  dateStr: string,
+  projects: readonly Project[],
+  onlyBillable: boolean,
+): number {
+  const countedEntries = filterBillableEntries([...entries], [...projects], onlyBillable);
+  return countedEntries.reduce((sum, entry) => sum + entryMinutesOnDay(entry, dateStr), 0);
 }
 
 export function resolveDayStatus(

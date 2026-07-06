@@ -69,7 +69,7 @@ export function ClientsPage() {
     <div className="space-y-6 w-full">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Clients</h1>
+          <h1 className="hidden text-xl font-semibold tracking-tight md:block">Clients</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage clients used for projects and billing.
           </p>

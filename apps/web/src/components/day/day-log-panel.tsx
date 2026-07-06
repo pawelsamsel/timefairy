@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { NotebookPen } from "lucide-react";
+import { NotebookPen, Pencil, Save } from "lucide-react";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 import { MarkdownContent } from "@/components/day/markdown-content";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +50,8 @@ export function DayLogDateSummary({ selectedDate }: { selectedDate: string }) {
 
 export function DayLogPanel({ selectedDate }: DayLogPanelProps) {
   const qc = useQueryClient();
-  const [noteView, setNoteView] = useState<NoteView>("write");
+  const isMobile = useIsMobileLayout();
+  const [noteView, setNoteView] = useState<NoteView>("preview");
   const [noteDraft, setNoteDraft] = useState("");
   const [dayOffDraft, setDayOffDraft] = useState<boolean | null>(null);
   const [saveError, setSaveError] = useState("");
@@ -66,6 +68,7 @@ export function DayLogPanel({ selectedDate }: DayLogPanelProps) {
     setNoteDraft(serverNote);
     setDayOffDraft(serverDayOff);
     setSaveError("");
+    setNoteView("preview");
   }, [selectedDate, serverNote, serverDayOff]);
 
   const saveDayLog = useMutation({
@@ -83,98 +86,111 @@ export function DayLogPanel({ selectedDate }: DayLogPanelProps) {
     noteDraft !== serverNote ||
     (dayOffDraft ?? false) !== (serverDayOff ?? false);
 
-  const saveRef = useRef(saveDayLog.mutate);
-  saveRef.current = saveDayLog.mutate;
-
-  const saveNow = useCallback(() => {
+  const saveNote = useCallback(() => {
     if (dayLogQuery.isLoading || saveDayLog.isPending || !dirty) return;
-    saveRef.current({
-      note: noteDraft,
-      isDayOff: dayOffDraft ?? false,
-    });
-  }, [dayLogQuery.isLoading, saveDayLog.isPending, dirty, noteDraft, dayOffDraft]);
-
-  useEffect(() => {
-    if (!dirty || dayLogQuery.isLoading) return;
-
-    const timer = window.setTimeout(() => {
-      saveRef.current({
-        note: noteDraft,
-        isDayOff: dayOffDraft ?? false,
-      });
-    }, 600);
-
-    return () => window.clearTimeout(timer);
-  }, [noteDraft, dayOffDraft, dirty, dayLogQuery.isLoading, selectedDate]);
+    saveDayLog.mutate(
+      { note: noteDraft, isDayOff: dayOffDraft ?? false },
+      { onSuccess: () => setNoteView("preview") },
+    );
+  }, [
+    dayLogQuery.isLoading,
+    saveDayLog,
+    dirty,
+    noteDraft,
+    dayOffDraft,
+  ]);
 
   const handleNoteKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "s") return;
     event.preventDefault();
-    saveNow();
+    saveNote();
   };
 
   const autoDayOff = dayOffDraft === null ? false : dayOffDraft;
 
+  const handleNoteAction = () => {
+    if (noteView === "preview") {
+      setNoteView("write");
+      return;
+    }
+    if (dayLogQuery.isLoading || saveDayLog.isPending) return;
+    if (!dirty) {
+      setNoteView("preview");
+      return;
+    }
+    saveNote();
+  };
+
   return (
-    <div className="shrink-0 rounded-md border bg-card shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2 sm:px-4">
+    <div
+      className={cn(
+        "shrink-0",
+        isMobile
+          ? "max-h-[min(40dvh,18rem)] overflow-y-auto border-b border-border/60 overscroll-y-contain"
+          : "rounded-md border bg-card shadow-sm",
+      )}
+    >
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2",
+          !isMobile && "sm:px-4",
+        )}
+      >
         <div className="flex min-w-0 items-center gap-2">
           <NotebookPen className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
           <span className="text-sm font-medium">Day note</span>
         </div>
-        <label className="flex cursor-pointer items-center gap-2">
-          <Checkbox
-            checked={autoDayOff}
-            onCheckedChange={(checked) => setDayOffDraft(checked === true)}
-          />
-          <Label className="cursor-pointer font-normal">Day off</Label>
-        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex cursor-pointer items-center gap-2">
+            <Checkbox
+              checked={autoDayOff}
+              onCheckedChange={(checked) => setDayOffDraft(checked === true)}
+            />
+            <Label className="cursor-pointer font-normal">Day off</Label>
+          </label>
+          <Button
+            type="button"
+            size="icon"
+            variant={noteView === "write" ? "default" : "ghost"}
+            className="h-8 w-8"
+            onClick={handleNoteAction}
+            disabled={noteView === "write" && (dayLogQuery.isLoading || saveDayLog.isPending)}
+            aria-label={noteView === "write" ? "Save note" : "Edit note"}
+            aria-pressed={noteView === "write"}
+          >
+            {noteView === "write" ? (
+              <Save className="h-4 w-4" />
+            ) : (
+              <Pencil className="h-4 w-4" />
+            )}
+          </Button>
+        </div>
       </div>
 
-      <div className="space-y-2 px-3 pb-3 pt-2 sm:px-4 sm:pb-4">
-        <div className="flex items-center gap-1">
-          <Button
-            type="button"
-            size="sm"
-            variant={noteView === "write" ? "default" : "ghost"}
-            className="h-7 px-2.5 text-xs"
-            onClick={() => setNoteView("write")}
-          >
-            Write
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={noteView === "preview" ? "default" : "ghost"}
-            className="h-7 px-2.5 text-xs"
-            onClick={() => setNoteView("preview")}
-          >
-            Preview
-          </Button>
-          {saveDayLog.isPending && (
-            <span className="ml-auto text-xs text-muted-foreground">Saving…</span>
-          )}
-          {!saveDayLog.isPending && dirty && (
-            <span className="ml-auto text-xs text-muted-foreground">Unsaved changes</span>
-          )}
-        </div>
-
+      <div
+        className={cn(
+          "space-y-2 pb-3 pt-2",
+          isMobile ? "bg-white px-0" : "px-3 sm:px-4 sm:pb-4",
+        )}
+      >
         {noteView === "write" ? (
           <Textarea
             value={noteDraft}
             onChange={(e) => setNoteDraft(e.target.value)}
             onKeyDown={handleNoteKeyDown}
             placeholder="Markdown note for this day…"
-            className={cn("min-h-[7rem] font-mono text-[13px] leading-relaxed")}
+            className={cn(
+              "min-h-28 rounded-none border-0 bg-transparent px-3 font-mono text-[13px] leading-relaxed shadow-none focus-visible:ring-0",
+            )}
             spellCheck
           />
         ) : (
-          <div className="min-h-[7rem] rounded-md border border-border/50 bg-muted/20 px-3 py-2">
+          <div className={cn("min-h-28", isMobile ? "px-3 py-1" : "rounded-md border border-border/50 bg-muted/20 px-3 py-2")}>
             <MarkdownContent source={noteDraft} />
           </div>
         )}
 
-        {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+        {saveError && <p className={cn("text-xs text-destructive", isMobile && "px-3")}>{saveError}</p>}
       </div>
     </div>
   );

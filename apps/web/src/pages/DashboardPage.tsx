@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import { CalendarDays, ChevronLeft, ChevronRight, List, ListTodo, NotebookPen, Plus } from "lucide-react";
@@ -11,14 +11,14 @@ import {
 } from "@/components/day/mobile-day-view";
 import { EntrySource, LaneType, TrackTimeMode, type TaskWithRelations, type TimeEntryWithRelations } from "@timefairy/shared-types";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { useRefreshOnAppFocus } from "@/hooks/use-refresh-on-app-focus";
+import { useToday } from "@/hooks/use-today";
 import { useTrackingNudges } from "@/hooks/use-tracking-nudges";
-import { useMobileShell } from "@/lib/mobile-shell-context";
 import { api } from "../lib/api";
 import {
   addDays,
   formatDayLabel,
   formatTimeRange,
-  toDateInputValue,
 } from "@/lib/datetime";
 import {
   entryMinutesOnDay,
@@ -38,6 +38,7 @@ import {
 } from "@/components/day/day-timeline";
 import { MobileDayTimeline } from "@/components/day/mobile-day-timeline";
 import { DayViewSummary } from "@/components/day/day-view-summary";
+import { buildClientDayMinutesBreakdown } from "@/lib/day-client-breakdown";
 import { DayLogPanel, DayLogDateSummary } from "@/components/day/day-log-panel";
 import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
@@ -73,7 +74,9 @@ import { TimeEntryEditDialog } from "@/components/time-entry/time-entry-edit-dia
 import { DayViewMiniCalendar } from "@/components/calendar/day-view-mini-calendar";
 import {
   fallbackWorkHoursPreferences,
+  filterBillableEntries,
   resolveEffectiveWorkHoursPreferences,
+  sumEntryMinutesOnDay,
 } from "@/lib/work-hours";
 import { useWorkHoursPreferences } from "@/lib/use-work-hours-preferences";
 import { findActiveTaskStartMoment, findAllActiveTaskMoments, taskForQuickLog } from "@/lib/task-quick-log";
@@ -120,7 +123,7 @@ function loadDayLogPanelVisible(): boolean {
 }
 
 function loadMobileDayTab(): MobileDayTab {
-  return localStorage.getItem(MOBILE_DAY_TAB_KEY) === "timeline" ? "timeline" : "tasks";
+  return localStorage.getItem(MOBILE_DAY_TAB_KEY) === "tasks" ? "tasks" : "timeline";
 }
 
 export function DashboardPage() {
@@ -128,7 +131,6 @@ export function DashboardPage() {
   const timeEntryUndo = useTimeEntryUndo();
   const { confirm, choose } = useAppDialog();
   const isMobile = useIsMobileLayout();
-  const { setFab } = useMobileShell();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedDate, setSelectedDate] = useSessionDate(DAY_VIEW_DATE_KEY);
   const [display, setDisplay] = useDayViewDisplay();
@@ -151,9 +153,17 @@ export function DashboardPage() {
   const clientsQuery = useQuery({ queryKey: ["clients"], queryFn: () => api.listClients() });
   const workHoursQuery = useWorkHoursPreferences();
   const entriesQuery = useQuery({
-    queryKey: ["time-entries", selectedDate],
+    queryKey: ["time-entries", selectedDate, dayRange.from, dayRange.to],
     queryFn: () => api.listTimeEntries(dayRange),
+    refetchOnMount: "always",
   });
+
+  const refreshDayQueries = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ["time-entries", selectedDate] });
+    void qc.invalidateQueries({ queryKey: ["day-log", selectedDate] });
+  }, [qc, selectedDate]);
+
+  useRefreshOnAppFocus(refreshDayQueries);
 
   const lanes = lanesQuery.data ?? [];
   const projects = projectsQuery.data ?? [];
@@ -172,10 +182,40 @@ export function DashboardPage() {
     () => allEntries.filter((entry) => entryOverlapsDay(entry, selectedDate)),
     [allEntries, selectedDate],
   );
+  const workHoursPreferences = useMemo(
+    () =>
+      resolveEffectiveWorkHoursPreferences(
+        fallbackWorkHoursPreferences(workHoursQuery.data),
+        filters,
+        clients,
+      ),
+    [workHoursQuery.data, filters, clients],
+  );
   const entries = useMemo(
     () => filterDayViewEntries(dayEntries, filters, projectClientIds),
     [dayEntries, filters, projectClientIds],
   );
+  const countBillableOnly = workHoursPreferences.onlyBillableProjects;
+
+  const totalMinutes = useMemo(
+    () => sumEntryMinutesOnDay(dayEntries, selectedDate, projects, countBillableOnly),
+    [dayEntries, selectedDate, projects, countBillableOnly],
+  );
+  const allTotalMinutes = useMemo(
+    () => dayEntries.reduce((sum, entry) => sum + entryMinutesOnDay(entry, selectedDate), 0),
+    [dayEntries, selectedDate],
+  );
+  const clientBreakdown = useMemo(
+    () =>
+      buildClientDayMinutesBreakdown(
+        countBillableOnly ? filterBillableEntries(dayEntries, projects, true) : dayEntries,
+        selectedDate,
+        projectClientIds,
+        clientNames,
+      ),
+    [countBillableOnly, dayEntries, projects, selectedDate, projectClientIds, clientNames],
+  );
+  const filtersActive = dayViewFiltersActive(filters);
   const [dropError, setDropError] = useState("");
   const [scheduleError, setScheduleError] = useState("");
   const [copyError, setCopyError] = useState("");
@@ -225,26 +265,6 @@ export function DashboardPage() {
       return dayViewFiltersEqual(current, sanitized) ? current : sanitized;
     });
   }, [lanes, projects, clients, setFilters]);
-
-  const totalMinutes = useMemo(
-    () => entries.reduce((sum, entry) => sum + entryMinutesOnDay(entry, selectedDate), 0),
-    [entries, selectedDate],
-  );
-  const allTotalMinutes = useMemo(
-    () =>
-      dayEntries.reduce((sum, entry) => sum + entryMinutesOnDay(entry, selectedDate), 0),
-    [dayEntries, selectedDate],
-  );
-  const filtersActive = dayViewFiltersActive(filters);
-  const workHoursPreferences = useMemo(
-    () =>
-      resolveEffectiveWorkHoursPreferences(
-        fallbackWorkHoursPreferences(workHoursQuery.data),
-        filters,
-        clients,
-      ),
-    [workHoursQuery.data, filters, clients],
-  );
 
   const defaultLoggedLaneId = useMemo(() => {
     const main =
@@ -479,18 +499,6 @@ export function DashboardPage() {
     setCreateOpen(true);
   }
 
-  useEffect(() => {
-    if (!isMobile) {
-      setFab(null);
-      return;
-    }
-    setFab({
-      onClick: () => openCreateDialog(),
-      ariaLabel: "Add log",
-    });
-    return () => setFab(null);
-  }, [isMobile, setFab]);
-
   function handleTaskDrop(payload: TaskDragPayload, slot: TimelineDropSlot) {
     setIsDraggingTask(false);
     createFromDrop.mutate({ payload, slot });
@@ -500,7 +508,7 @@ export function DashboardPage() {
     const { startAt: startLocal, endAt: endLocal } = slotToFormDatetimeLocal(
       selectedDate,
       slot,
-      durationMinutes,
+      durationMinutes ?? slot.durationMinutes,
     );
     openCreateDialog({
       kind: "block",
@@ -541,7 +549,7 @@ export function DashboardPage() {
           "Cannot load data",
         )
       : null;
-  const today = useMemo(() => toDateInputValue(new Date()), []);
+  const today = useToday();
   const isTodaySelected = selectedDate === today;
 
   const activeMoments = useMemo(
@@ -617,85 +625,87 @@ export function DashboardPage() {
 
   if (isMobile) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col gap-3">
-        <MobileDayHeader
-          selectedDate={selectedDate}
-          totalMinutes={allTotalMinutes}
-          dailyWorkHours={workHoursPreferences.dailyWorkHours}
-          onSelectDate={setSelectedDate}
-        />
-
+      <div className="grid h-full min-h-0 max-h-full grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden overscroll-none">
+        <div className="min-h-0 overflow-hidden bg-white">
+          <MobileDayHeader
+            selectedDate={selectedDate}
+            totalMinutes={totalMinutes}
+            dailyWorkHours={workHoursPreferences.dailyWorkHours}
+            onSelectDate={setSelectedDate}
+            dayLogPanelVisible={dayLogPanelVisible}
+            onDayLogPanelVisibleChange={setDayLogPanelVisible}
+          />
+        </div>
         <MobileDayTabBar activeTab={mobileTab} onTabChange={setMobileTab} />
 
-        {loadError && (
-          <p className="shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
-            {loadError}
-          </p>
-        )}
-
-        {quickLogError && (
-          <p className="shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
-            {quickLogError}
-          </p>
-        )}
-
-        {(mobileTab === "timeline" ? scheduleError || dropError || copyError : false) && (
-          <p className="shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
-            {scheduleError || dropError || copyError}
-          </p>
-        )}
-
-        {primaryActiveMoment && (
-          <MobileActiveTaskBar
-            moment={primaryActiveMoment}
-            projectColor={
-              primaryActiveMoment.projectId
-                ? (projectColorById.get(primaryActiveMoment.projectId) ?? null)
-                : null
-            }
-            pending={quickLogTaskId != null}
-            onStop={() => {
-              const stopTarget = taskForQuickLog(primaryActiveMoment);
-              if (!stopTarget) return;
-              quickStopTask.mutate({
-                ...stopTarget,
-                title: primaryActiveMoment.task?.title ?? undefined,
-              });
-            }}
-          />
-        )}
-
-        <div className="flex min-h-0 flex-1 flex-col">
-          {mobileTab === "tasks" ? (
-            <DayTaskPanel
-              selectedDate={selectedDate}
-              variant="mobile"
-              onDragStart={() => setIsDraggingTask(true)}
-              onDragEnd={() => setIsDraggingTask(false)}
-              activeTaskIds={activeTaskIds}
-              pendingTaskId={quickLogTaskId}
-              onQuickToggle={handleQuickToggle}
-            />
-          ) : (
-            <MobileDayTimeline
-              className="min-h-0 flex-1"
-              dateStr={selectedDate}
-              entries={entries}
-              display={display}
-              clientNames={clientNames}
-              projectClientIds={projectClientIds}
-              onEntryClick={setEditEntry}
-              onGapClick={handleMobileGapLog}
-            />
+        <div className="flex min-h-0 flex-col overflow-hidden bg-imperial-blue-50">
+          {loadError && (
+            <p className="mx-3 mt-2 shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+              {loadError}
+            </p>
           )}
-        </div>
 
-        <DayViewSummary
-          totalMinutes={totalMinutes}
-          entryCount={entries.length}
-          filtersActive={filtersActive}
-          allTotalMinutes={allTotalMinutes}
-        />
+          {quickLogError && (
+            <p className="mx-3 mt-2 shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+              {quickLogError}
+            </p>
+          )}
+
+          {(mobileTab === "timeline" ? scheduleError || dropError || copyError : false) && (
+            <p className="mx-3 mt-2 shrink-0 text-sm text-destructive rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2">
+              {scheduleError || dropError || copyError}
+            </p>
+          )}
+
+          {primaryActiveMoment && (
+            <div className="mx-3 mt-2 shrink-0">
+              <MobileActiveTaskBar
+                moment={primaryActiveMoment}
+                projectColor={
+                  primaryActiveMoment.projectId
+                    ? (projectColorById.get(primaryActiveMoment.projectId) ?? null)
+                    : null
+                }
+                pending={quickLogTaskId != null}
+                onStop={() => {
+                  const stopTarget = taskForQuickLog(primaryActiveMoment);
+                  if (!stopTarget) return;
+                  quickStopTask.mutate({
+                    ...stopTarget,
+                    title: primaryActiveMoment.task?.title ?? undefined,
+                  });
+                }}
+              />
+            </div>
+          )}
+
+          <div className="mx-3 mt-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden overscroll-y-none">
+            {mobileTab === "tasks" ? (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card shadow-sm">
+                <DayTaskPanel
+                  selectedDate={selectedDate}
+                  variant="mobile"
+                  onDragStart={() => setIsDraggingTask(true)}
+                  onDragEnd={() => setIsDraggingTask(false)}
+                  activeTaskIds={activeTaskIds}
+                  pendingTaskId={quickLogTaskId}
+                  onQuickToggle={handleQuickToggle}
+                />
+              </div>
+            ) : (
+              <MobileDayTimeline
+                className="min-h-0 flex-1"
+                dateStr={selectedDate}
+                entries={entries}
+                display={display}
+                clientNames={clientNames}
+                projectClientIds={projectClientIds}
+                onEntryClick={setEditEntry}
+                onGapClick={handleMobileGapLog}
+              />
+            )}
+          </div>
+        </div>
 
         {dialogs}
       </div>
@@ -713,18 +723,6 @@ export function DashboardPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DelayedTooltip label={miniCalendarVisible ? "Hide mini calendar" : "Mini calendar"}>
-            <Button
-              type="button"
-              size="icon"
-              variant={miniCalendarVisible ? "default" : "outline"}
-              onClick={() => setMiniCalendarVisible((visible) => !visible)}
-              aria-pressed={miniCalendarVisible}
-              aria-label={miniCalendarVisible ? "Hide mini calendar" : "Show mini calendar"}
-            >
-              <CalendarDays className="h-4 w-4" />
-            </Button>
-          </DelayedTooltip>
           <DelayedTooltip label={dayLogPanelVisible ? "Hide day note" : "Day note"}>
             <Button
               type="button"
@@ -735,6 +733,18 @@ export function DashboardPage() {
               aria-label={dayLogPanelVisible ? "Hide day note panel" : "Show day note panel"}
             >
               <NotebookPen className="h-4 w-4" />
+            </Button>
+          </DelayedTooltip>
+          <DelayedTooltip label={miniCalendarVisible ? "Hide mini calendar" : "Mini calendar"}>
+            <Button
+              type="button"
+              size="icon"
+              variant={miniCalendarVisible ? "default" : "outline"}
+              onClick={() => setMiniCalendarVisible((visible) => !visible)}
+              aria-pressed={miniCalendarVisible}
+              aria-label={miniCalendarVisible ? "Hide mini calendar" : "Show mini calendar"}
+            >
+              <CalendarDays className="h-4 w-4" />
             </Button>
           </DelayedTooltip>
           <div className="flex gap-1 rounded-md border bg-background p-0.5">
@@ -880,6 +890,7 @@ export function DashboardPage() {
             projectClientIds={projectClientIds}
             filtersActive={filtersActive}
             workHoursPreferences={workHoursPreferences}
+            projects={projects}
           />
         )}
 
@@ -946,7 +957,9 @@ export function DashboardPage() {
         totalMinutes={totalMinutes}
         entryCount={entries.length}
         filtersActive={filtersActive}
+        countBillableOnly={countBillableOnly}
         allTotalMinutes={allTotalMinutes}
+        clientBreakdown={clientBreakdown}
       />
         </div>
       </div>

@@ -11,6 +11,7 @@ import {
   TIMELINE_END_HOUR,
   TIMELINE_START_HOUR,
   snapTimelineMinutes,
+  slotToFormDatetimeLocal,
   type MinuteRange,
   type TimelineDropSlot,
 } from "@/lib/timeline";
@@ -263,4 +264,17 @@ export function resolveMobileGapFillRange(
   }
 
   return { startMinutes, durationMinutes };
+}
+
+export function buildMobileNowLogFormDefaults(
+  config: Pick<TimelineGridConfig, "minEntryMinutes" | "gridStepMinutes" | "useTimeGrid">,
+): { dateStr: string; startAt: string; endAt: string } {
+  const dateStr = toDateInputValue(new Date());
+  const fill = resolveMobileGapFillRange(fullDayGapSlot(), dateStr, config);
+  const { startAt, endAt } = slotToFormDatetimeLocal(
+    dateStr,
+    { startMinutes: fill.startMinutes, durationMinutes: fill.durationMinutes },
+    fill.durationMinutes,
+  );
+  return { dateStr, startAt, endAt };
 }

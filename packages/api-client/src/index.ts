@@ -123,7 +123,7 @@ export class TimefairyClient {
       headers.Authorization = `Bearer ${this.accessToken}`;
     }
 
-    const res = await fetch(`${this.baseUrl}${path}`, { ...init, headers });
+    const res = await fetch(`${this.baseUrl}${path}`, { ...init, headers, cache: "no-store" });
 
     if (
       res.status === 401 &&

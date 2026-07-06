@@ -281,7 +281,7 @@ export function slotDefaultDurationMinutes(
   slot: TimelineDropSlot,
   minEntryMinutes = TIMELINE_MIN_ENTRY_MINUTES,
 ): number {
-  return Math.max(minEntryMinutes, Math.min(slot.durationMinutes, 60));
+  return Math.max(minEntryMinutes, slot.durationMinutes);
 }
 
 export function slotToFormDatetimeLocal(

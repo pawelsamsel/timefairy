@@ -5,6 +5,7 @@ import { DEFAULT_PROJECT_COLOR } from "@/lib/project-colors";
 import { getErrorMessage } from "@/lib/errors";
 import { ProjectColorPicker } from "@/components/projects/project-color-picker";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -51,6 +52,7 @@ export function ProjectFormDialog({ open, onOpenChange, projectId }: Props) {
   const [name, setName] = useState("");
   const [hourlyRate, setHourlyRate] = useState("100");
   const [currency, setCurrency] = useState("PLN");
+  const [isBillable, setIsBillable] = useState(true);
   const [color, setColor] = useState<string>(DEFAULT_PROJECT_COLOR);
   const [error, setError] = useState("");
 
@@ -61,12 +63,14 @@ export function ProjectFormDialog({ open, onOpenChange, projectId }: Props) {
       setName(existing.name);
       setHourlyRate(String(existing.hourlyRate));
       setCurrency(existing.currency);
+      setIsBillable(existing.isBillable);
       setColor(existing.color ?? DEFAULT_PROJECT_COLOR);
     } else if (!isEdit) {
       setClientId(clients[0]?.id ?? "");
       setName("");
       setHourlyRate("100");
       setCurrency("PLN");
+      setIsBillable(true);
       setColor(DEFAULT_PROJECT_COLOR);
     }
     setError("");
@@ -80,6 +84,7 @@ export function ProjectFormDialog({ open, onOpenChange, projectId }: Props) {
         color,
         hourlyRate: parseFloat(hourlyRate),
         currency,
+        isBillable,
       };
       if (isEdit) return api.updateProject(projectId!, payload);
       return api.createProject(payload);
@@ -157,6 +162,13 @@ export function ProjectFormDialog({ open, onOpenChange, projectId }: Props) {
               />
             </div>
           </div>
+          <label className="flex cursor-pointer items-center gap-2">
+            <Checkbox
+              checked={isBillable}
+              onCheckedChange={(checked) => setIsBillable(checked === true)}
+            />
+            <Label className="cursor-pointer font-normal">Billable</Label>
+          </label>
           <DialogFooter>
             <Button type="button" variant="dialogOutline" onClick={() => onOpenChange(false)}>
               Cancel

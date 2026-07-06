@@ -17,9 +17,14 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Logo } from "@/components/logo";
 import { useIsMobileLayout } from "@/hooks/use-media-query";
+import { MobileAddLogHost } from "@/components/layout/mobile-add-log-host";
 import { MobileAppNav } from "@/components/layout/mobile-app-nav";
-import { MobileMenuButton } from "@/components/layout/mobile-menu-button";
+import {
+  MOBILE_CONTENT_SURFACE_CLASS,
+  MobilePageHeader,
+} from "@/components/layout/mobile-page-header";
 import { MobileSideMenu } from "@/components/layout/mobile-side-menu";
+import { resolveMobilePageTitle } from "@/lib/mobile-page-title";
 import { MobileShellProvider } from "@/lib/mobile-shell-context";
 import {
   adminAppNav,
@@ -76,7 +81,9 @@ export function Layout() {
   const isMobile = useIsMobileLayout();
   const location = useLocation();
   const isSettingsArea = !isAdminMode && location.pathname.startsWith("/app/settings");
-  const isDashboard = location.pathname === "/app/dashboard";
+  const hideFixedMobileMenu = isMobile && location.pathname.startsWith("/app/dashboard");
+  const isMobileDashboard = hideFixedMobileMenu;
+  const mobilePageTitle = resolveMobilePageTitle(location.pathname);
   const homeTo = isAdminMode ? "/app/admin/users" : "/app/dashboard";
   const logoSubtitle = isAdminMode ? "Admin" : isSettingsArea ? "Settings" : undefined;
 
@@ -86,7 +93,12 @@ export function Layout() {
 
   return (
     <MobileShellProvider>
-    <div className="flex h-screen min-h-0 overflow-hidden bg-background">
+    <div className={cn(
+      "flex w-full max-w-full bg-background",
+      isMobile
+        ? "h-dvh min-h-0 flex-col overflow-hidden pt-[env(safe-area-inset-top)]"
+        : "h-dvh min-h-0 overflow-x-hidden",
+    )}>
       {!isMobile && (
       <aside
         className={cn(
@@ -275,16 +287,30 @@ export function Layout() {
       )}
       <main
         className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-auto p-3 md:p-4",
-          isMobile && "pb-[calc(6rem+env(safe-area-inset-bottom))]",
+          "flex min-h-0 flex-1 flex-col overflow-x-hidden",
+          isMobile
+            ? "overflow-hidden px-0 pt-0"
+            : cn("overflow-y-auto p-3 md:p-4"),
         )}
       >
-        <Outlet />
+        {isMobile && !isMobileDashboard ? <MobilePageHeader title={mobilePageTitle} /> : null}
+        <div
+          className={cn(
+            "flex min-h-0 flex-1 flex-col",
+            isMobile && cn(
+              isMobileDashboard
+                ? "min-h-0 overflow-hidden overscroll-none"
+                : cn(MOBILE_CONTENT_SURFACE_CLASS, "overflow-y-auto px-3 pt-3"),
+            ),
+          )}
+        >
+          <Outlet />
+        </div>
       </main>
       {isMobile && (
         <>
-          {!isDashboard && <MobileMenuButton />}
           <MobileSideMenu />
+          <MobileAddLogHost />
           <MobileAppNav />
         </>
       )}

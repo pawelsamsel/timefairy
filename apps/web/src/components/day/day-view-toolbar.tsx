@@ -1,7 +1,8 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Eye, Filter } from "lucide-react";
 import type { Client } from "@timefairy/shared-types";
 import { api } from "@/lib/api";
+import { usePinnedProjects } from "@/hooks/use-pinned-projects";
 import {
   countDayViewFilterSelections,
   dayViewFiltersActive,
@@ -36,6 +37,8 @@ export function DayViewToolbar({
   projects,
   clients,
 }: DayViewToolbarProps) {
+  const { sortProjects } = usePinnedProjects();
+  const sortedProjects = useMemo(() => sortProjects(projects), [projects, sortProjects]);
   const filtersActive = dayViewFiltersActive(filters);
   const filterCount = countDayViewFilterSelections(filters);
   const displayCustomized = dayViewDisplayCustomized(display);
@@ -145,7 +148,7 @@ export function DayViewToolbar({
             <FilterSection
               title="Projects"
               emptyLabel="No projects"
-              items={projects.map((project) => ({
+              items={sortedProjects.map((project) => ({
                 id: project.id,
                 label: project.name,
                 hint: (

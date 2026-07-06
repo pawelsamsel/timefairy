@@ -12,7 +12,7 @@ export function AdminSettingsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">System settings</h1>
+      <h1 className="hidden text-xl font-semibold md:block">System settings</h1>
       <div className="card max-w-lg space-y-4">
         <label className="flex items-center gap-3 cursor-pointer">
           <input

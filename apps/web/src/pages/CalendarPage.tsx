@@ -98,9 +98,9 @@ export function CalendarPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">Calendar</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <div className="hidden md:block text-center md:text-left">
+        <h1 className="hidden text-xl font-semibold tracking-tight md:block">Calendar</h1>
+        <p className="mt-1 hidden text-sm text-muted-foreground md:block">
           See which work days have logged time and whether they meet your target. Configure rules in
           Settings → Work hours.
         </p>

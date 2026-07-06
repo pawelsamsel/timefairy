@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import type { WorkHoursPreferences } from "@timefairy/shared-types";
+import type { Project, WorkHoursPreferences } from "@timefairy/shared-types";
 import { MonthCalendar } from "@/components/calendar/month-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ type DayViewMiniCalendarProps = {
   projectClientIds: Map<string, string>;
   filtersActive: boolean;
   workHoursPreferences: WorkHoursPreferences;
+  projects: Project[];
 };
 
 export function DayViewMiniCalendar({
@@ -36,6 +37,7 @@ export function DayViewMiniCalendar({
   projectClientIds,
   filtersActive,
   workHoursPreferences,
+  projects,
 }: DayViewMiniCalendarProps) {
   const selectedParts = useMemo(() => dateParts(selectedDate), [selectedDate]);
   const [year, setYear] = useState(selectedParts.year);
@@ -56,7 +58,9 @@ export function DayViewMiniCalendar({
   const projectsQuery = useQuery({
     queryKey: ["projects"],
     queryFn: () => api.listProjects(),
+    enabled: projects.length === 0,
   });
+  const resolvedProjects = projects.length > 0 ? projects : (projectsQuery.data ?? []);
 
   const entriesQuery = useQuery({
     queryKey: ["time-entries", "mini-calendar", range.fromDate, range.toDate],
@@ -76,13 +80,13 @@ export function DayViewMiniCalendar({
   const filteredEntries = useMemo(() => {
     const billableFiltered = filterBillableEntries(
       entriesQuery.data ?? [],
-      projectsQuery.data ?? [],
+      resolvedProjects,
       workHoursPreferences.onlyBillableProjects,
     );
     return filterDayViewEntries(billableFiltered, filters, projectClientIds);
   }, [
     entriesQuery.data,
-    projectsQuery.data,
+    resolvedProjects,
     filters,
     projectClientIds,
     workHoursPreferences.onlyBillableProjects,
@@ -99,7 +103,7 @@ export function DayViewMiniCalendar({
   );
 
   return (
-    <Card className="flex h-full min-h-0 w-[17rem] shrink-0 flex-col overflow-hidden self-stretch">
+    <Card className="flex h-full min-h-0 w-[20rem] shrink-0 flex-col overflow-hidden self-stretch">
       <CardHeader className="shrink-0 space-y-2 px-4 pb-2 pt-4">
         <div className="flex items-center justify-between gap-1">
           <div className="min-w-0">
@@ -109,6 +113,11 @@ export function DayViewMiniCalendar({
             {filtersActive && (
               <Badge variant="secondary" className="mt-1 font-normal">
                 Filtered
+              </Badge>
+            )}
+            {workHoursPreferences.onlyBillableProjects && (
+              <Badge variant="secondary" className="mt-1 font-normal">
+                Billable only
               </Badge>
             )}
           </div>

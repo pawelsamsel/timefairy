@@ -1,8 +1,9 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { TaskStatus, type TaskWithRelations } from "@timefairy/shared-types";
 import { api } from "@/lib/api";
+import { usePinnedProjects } from "@/hooks/use-pinned-projects";
 import { getErrorMessage } from "@/lib/errors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,8 @@ export function InlineTaskAdd({
   });
 
   const projects = projectsOverride ?? fetchedProjects;
+  const { sortProjects } = usePinnedProjects();
+  const sortedProjects = useMemo(() => sortProjects(projects), [projects, sortProjects]);
 
   const effectiveProjectId = fixedProjectId ?? projectId;
 
@@ -143,7 +146,7 @@ export function InlineTaskAdd({
                 <SelectValue placeholder="Project" />
               </SelectTrigger>
               <SelectContent>
-                {projects.map((p) => (
+                {sortedProjects.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.name}
                   </SelectItem>
@@ -185,7 +188,7 @@ export function InlineTaskAdd({
               <SelectValue placeholder="Project" />
             </SelectTrigger>
             <SelectContent>
-              {projects.map((p) => (
+              {sortedProjects.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}
                 </SelectItem>

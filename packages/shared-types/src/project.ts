@@ -10,6 +10,7 @@ export const createProjectSchema = z.object({
   color: hexColor.default("#00509d"),
   hourlyRate: z.number().nonnegative(),
   currency: z.string().length(3),
+  isBillable: z.boolean().default(true),
   note: z.string().optional(),
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
@@ -24,6 +25,7 @@ export const projectSchema = z.object({
   color: z.string(),
   hourlyRate: z.number(),
   currency: z.string(),
+  isBillable: z.boolean(),
   note: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

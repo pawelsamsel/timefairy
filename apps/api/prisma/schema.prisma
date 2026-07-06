@@ -101,6 +101,7 @@ model Project {
   color      String   @default("#00509d")
   hourlyRate Decimal  @db.Decimal(10, 2)
   currency   String   @db.VarChar(3)
+  isBillable Boolean  @default(true)
   note       String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt

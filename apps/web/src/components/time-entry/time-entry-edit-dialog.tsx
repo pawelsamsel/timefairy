@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Trash2 } from "lucide-react";
 import { EntrySource, type TimeEntryWithRelations } from "@timefairy/shared-types";
@@ -57,6 +57,7 @@ export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
   const { confirm } = useAppDialog();
   const isMobile = useIsMobileLayout();
   const formId = "time-entry-edit-form";
+  const formRef = useRef<HTMLFormElement>(null);
   const [laneId, setLaneId] = useState<string>("");
   const [projectId, setProjectId] = useState<string | undefined>();
   const [taskId, setTaskId] = useState<string | undefined>();
@@ -286,6 +287,19 @@ export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
   });
 
   const actionPending = save.isPending || remove.isPending || copy.isPending;
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleSaveShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+      event.preventDefault();
+      formRef.current?.requestSubmit();
+    }
+
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [open]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -525,8 +539,9 @@ export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showClose={false}
+        preventOutsideClose
         fullscreen={isMobile}
-        className={cn(isMobile && "flex flex-col", !isMobile && "max-w-md max-h-[90vh] overflow-y-auto")}
+        className={cn(isMobile && "flex flex-col", !isMobile && "max-w-md")}
       >
         {isMobile ? (
           <div className="flex h-full min-h-0 flex-1 flex-col">
@@ -535,7 +550,7 @@ export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
               <DialogDescription>Change project, name, time, or note.</DialogDescription>
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
-              <form id={formId} onSubmit={onSubmit} className="space-y-4">
+              <form id={formId} ref={formRef} onSubmit={onSubmit} className="space-y-4">
                 {formFields}
               </form>
             </div>
@@ -547,7 +562,7 @@ export function TimeEntryEditDialog({ open, onOpenChange, entry }: Props) {
               <DialogTitle>{dialogTitle}</DialogTitle>
               <DialogDescription>Change project, name, time, or note.</DialogDescription>
             </DialogHeader>
-            <form onSubmit={onSubmit} className="space-y-4">
+            <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
               {formFields}
               {formFooter}
             </form>

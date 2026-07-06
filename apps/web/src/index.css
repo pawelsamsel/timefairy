@@ -62,7 +62,7 @@
 :root {
   --radius: 0.625rem;
 
-  --background: var(--color-imperial-blue-50);
+  --background: #ffffff;
   --foreground: var(--color-imperial-blue);
   --card: #ffffff;
   --card-foreground: var(--color-imperial-blue);
@@ -109,8 +109,19 @@
   * {
     @apply border-border;
   }
+  html,
+  body,
+  #root {
+    height: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
   body {
-    @apply bg-background text-foreground min-h-screen antialiased text-sm;
+    @apply bg-background text-foreground overflow-x-hidden overflow-y-hidden antialiased text-sm;
   }
 }
 

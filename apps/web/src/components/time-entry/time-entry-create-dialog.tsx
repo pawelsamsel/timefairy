@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { EntrySource } from "@timefairy/shared-types";
 import { api } from "@/lib/api";
@@ -70,6 +70,7 @@ export function TimeEntryCreateDialog({
   const timeEntryUndo = useTimeEntryUndo();
   const isMobile = useIsMobileLayout();
   const formId = "time-entry-create-form";
+  const formRef = useRef<HTMLFormElement>(null);
   const [kind, setKind] = useState<EntryFormKind>("block");
   const [laneId, setLaneId] = useState<string | undefined>();
   const [projectId, setProjectId] = useState<string | undefined>();
@@ -164,6 +165,19 @@ export function TimeEntryCreateDialog({
       setTaskId(undefined);
     }
   }, [projectTasks, taskId]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleSaveShortcut(event: KeyboardEvent) {
+      if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+      event.preventDefault();
+      formRef.current?.requestSubmit();
+    }
+
+    window.addEventListener("keydown", handleSaveShortcut);
+    return () => window.removeEventListener("keydown", handleSaveShortcut);
+  }, [open]);
 
   const createEntry = useMutation({
     mutationFn: async () => {
@@ -417,8 +431,9 @@ export function TimeEntryCreateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         showClose={false}
+        preventOutsideClose
         fullscreen={isMobile}
-        className={cn(isMobile && "flex flex-col", !isMobile && "max-w-md max-h-[90vh] overflow-y-auto")}
+        className={cn(isMobile && "flex flex-col", !isMobile && "max-w-md")}
       >
         {isMobile ? (
           <div className="flex h-full min-h-0 flex-1 flex-col">
@@ -427,7 +442,7 @@ export function TimeEntryCreateDialog({
               <DialogDescription>{description}</DialogDescription>
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
-              <form id={formId} onSubmit={onSubmit} className="space-y-4">
+              <form id={formId} ref={formRef} onSubmit={onSubmit} className="space-y-4">
                 {formFields}
               </form>
             </div>
@@ -439,7 +454,7 @@ export function TimeEntryCreateDialog({
               <DialogTitle>Add log</DialogTitle>
               <DialogDescription>{description}</DialogDescription>
             </DialogHeader>
-            <form onSubmit={onSubmit} className="space-y-4">
+            <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
               {formFields}
               {formFooter}
             </form>

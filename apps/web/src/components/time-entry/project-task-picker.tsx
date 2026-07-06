@@ -5,6 +5,7 @@ import { InlineTaskAdd } from "@/components/tasks/inline-task-add";
 import { IconSearchPicker } from "@/components/pickers/icon-search-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { usePinnedProjects } from "@/hooks/use-pinned-projects";
 import { findTaskByReference } from "@/lib/task-reference";
 import { cn } from "@/lib/utils";
 
@@ -42,15 +43,17 @@ export function ProjectTaskPicker({
   projectOptional = false,
   className,
 }: Props) {
+  const { pinnedIdSet, togglePin, sortProjects } = usePinnedProjects();
+
   const projectItems = useMemo(
     () =>
-      projects.map((p) => ({
+      sortProjects(projects).map((p) => ({
         id: p.id,
         label: p.name,
         hint: p.client?.name,
         color: p.color,
       })),
-    [projects],
+    [projects, sortProjects],
   );
 
   const taskItems = useMemo(
@@ -97,6 +100,8 @@ export function ProjectTaskPicker({
           allowClear={projectOptional}
           clearLabel="No project"
           searchPlaceholder="Search projects…"
+          pinnedIds={pinnedIdSet}
+          onTogglePin={togglePin}
         />
         <IconSearchPicker
           icon={ListTodo}

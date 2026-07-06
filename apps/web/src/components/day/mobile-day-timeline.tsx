@@ -20,6 +20,9 @@ import { isMomentEntry } from "@/lib/time-entry-kind";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
+const MOBILE_GAP_ADD_BUTTON_CLASS =
+  "h-9 w-9 rounded-full border border-dashed border-imperial-blue-200 bg-imperial-blue-50 text-imperial-blue shadow-sm hover:bg-imperial-blue-100/80 hover:text-imperial-blue";
+
 type MobileDayTimelineProps = {
   className?: string;
   dateStr: string;
@@ -49,7 +52,7 @@ export function MobileDayTimeline({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border bg-card shadow-sm", className)}>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-4 pt-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-3 pb-4 pt-0">
         <div className="relative mx-auto flex w-full max-w-lg flex-col">
           {isEmptyDay ? (
             <EmptyDayTimeline onGapClick={onGapClick} />
@@ -126,8 +129,8 @@ function EmptyDayTimeline({
       <Button
         type="button"
         size="icon"
-        variant="outline"
-        className="h-9 w-9 rounded-full border-dashed bg-background shadow-sm"
+        variant="ghost"
+        className={MOBILE_GAP_ADD_BUTTON_CLASS}
         onClick={() => onGapClick({ slot })}
         aria-label={`Add in ${formatGapSlotLabel(slot)}`}
         title={formatGapSlotLabel(slot)}
@@ -171,8 +174,8 @@ function MobileTimelineRowView({
         <Button
           type="button"
           size="icon"
-          variant="outline"
-          className="relative z-10 h-9 w-9 rounded-full border-dashed bg-background shadow-sm"
+          variant="ghost"
+          className={cn("relative z-10", MOBILE_GAP_ADD_BUTTON_CLASS)}
           onClick={() => onGapClick({ slot: row.slot, dockSide: row.dockSide })}
           aria-label={`Add in ${formatGapSlotLabel(row.slot)}`}
           title={formatGapSlotLabel(row.slot)}

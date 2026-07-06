@@ -18,5 +18,5 @@ export function useMediaQuery(query: string): boolean {
 }
 
 export function useIsMobileLayout(): boolean {
-  return useMediaQuery("(max-width: 767px)");
+  return useMediaQuery("(max-width: 767px), (hover: none) and (pointer: coarse)");
 }

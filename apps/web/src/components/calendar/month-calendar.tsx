@@ -2,11 +2,16 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { WorkHoursPreferences } from "@timefairy/shared-types";
 import { isWeekend, type DayLogStatus, type DayLogSummary } from "@/lib/month-calendar";
+import { type DayLogDayState } from "@/lib/day-logs";
 import { resolveDayStatus } from "@/lib/work-hours";
+import { useIsMobileLayout } from "@/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const WEEKDAY_LABELS_COMPACT = ["M", "T", "W", "T", "F", "S", "S"];
+
+const DAY_OFF_HATCH =
+  "[background-image:repeating-linear-gradient(45deg,transparent,transparent_3px,rgba(0,0,0,0.07)_3px,rgba(0,0,0,0.07)_4px)]";
 
 type MonthCalendarProps = {
   year?: number;
@@ -18,12 +23,12 @@ type MonthCalendarProps = {
   compact?: boolean;
   showLegend?: boolean;
   onDateSelect?: (date: string) => void;
-  dayLogsByDate?: Map<string, { isDayOff: boolean | null }>;
+  dayLogsByDate?: Map<string, DayLogDayState>;
 };
 
 function formatHours(totalMinutes: number, compact: boolean): string {
   const hours = totalMinutes / 60;
-  return compact ? `${hours.toFixed(hours >= 10 ? 0 : 1)}` : `${hours.toFixed(1)}h`;
+  return compact ? hours.toFixed(2) : `${hours.toFixed(1)}h`;
 }
 
 function statusClasses(status: DayLogStatus, inMonth: boolean, compact: boolean): string {
@@ -39,8 +44,8 @@ function statusClasses(status: DayLogStatus, inMonth: boolean, compact: boolean)
         : "border-amber-500/40 bg-amber-500/10 hover:bg-amber-500/15";
     case "off":
       return compact
-        ? "border-transparent bg-muted/10 text-muted-foreground/60 hover:bg-muted/20"
-        : "border-transparent bg-muted/10 text-muted-foreground/70 hover:bg-muted/20";
+        ? "border-border/50 bg-muted/10 text-muted-foreground/60 hover:bg-muted/20"
+        : "border-border/50 bg-muted/10 text-muted-foreground/70 hover:bg-muted/20";
     case "none":
     default:
       return compact
@@ -59,6 +64,7 @@ function DayCell({
   compact,
   onDateSelect,
   dayOffOverride,
+  hasNote,
 }: {
   date: string;
   monthIndex: number;
@@ -69,35 +75,42 @@ function DayCell({
   compact: boolean;
   onDateSelect?: (date: string) => void;
   dayOffOverride?: boolean | null;
+  hasNote?: boolean;
 }) {
+  const isMobile = useIsMobileLayout();
   const [, monthStr, dayStr] = date.split("-");
   const inMonth = Number(monthStr) - 1 === monthIndex;
   const weekend = isWeekend(date);
   const hasEntries = (summary?.entryCount ?? 0) > 0;
   const isMarkedDayOff = dayOffOverride === true;
   const status = resolveDayStatus(date, summary, workHoursPreferences, dayOffOverride);
+  const showDayOffHatch = inMonth && (isMarkedDayOff || weekend);
+
+  const centerCellContent = isMobile && !compact;
 
   const className = cn(
-    "group flex flex-col rounded-md border text-left transition-colors",
+    "group relative flex flex-col rounded-md border transition-colors",
+    centerCellContent ? "items-center text-center" : "text-left",
     compact
-      ? cn(
-          "min-h-[2.25rem] items-center justify-center p-0.5",
-          inMonth && hasEntries ? (isMarkedDayOff ? "gap-1.5" : "gap-1") : "gap-0.5",
-        )
+      ? "min-h-[2.5rem] items-center justify-center gap-0.5 p-0.5"
       : "min-h-[4.5rem] p-1.5 sm:min-h-[5.5rem] sm:p-2",
     statusClasses(status, inMonth, compact),
-    weekend && inMonth && "shadow-[inset_0_0_0_100vmax_rgba(128,128,128,0.045)]",
     isSelected && "ring-2 ring-inset ring-primary",
     isToday && !isSelected && "ring-1 ring-inset ring-primary/50",
+    showDayOffHatch && DAY_OFF_HATCH,
+    weekend && inMonth && status === "none" && "border-border/50",
   );
 
+  const noteSuffix = hasNote ? ", has note" : "";
   const ariaLabel = hasEntries
-    ? `${date}: ${formatHours(summary!.totalMinutes, false)}, ${summary!.entryCount} entries${isMarkedDayOff ? ", day off" : ""}`
+    ? `${date}: ${formatHours(summary!.totalMinutes, false)}, ${summary!.entryCount} entries${isMarkedDayOff ? ", day off" : ""}${noteSuffix}`
     : status === "off"
-      ? `${date}: day off`
+      ? `${date}: day off${noteSuffix}`
       : isMarkedDayOff
-        ? `${date}: marked day off`
-        : `${date}: no entries`;
+        ? `${date}: marked day off${noteSuffix}`
+        : hasNote
+          ? `${date}: has note`
+          : `${date}: no entries`;
 
   const content = (
     <>
@@ -108,38 +121,35 @@ function DayCell({
           inMonth ? "text-foreground" : "text-muted-foreground/50",
           weekend && inMonth && "text-muted-foreground/75",
           status === "off" && inMonth && "text-muted-foreground/70",
-          isMarkedDayOff &&
-            inMonth &&
-            "underline decoration-emerald-500/80 decoration-2 underline-offset-[3px]",
         )}
       >
         {Number(dayStr)}
       </span>
 
       {!compact && inMonth && hasEntries && (
-        <div className="mt-auto space-y-0.5">
+        <div className={cn("space-y-0.5", centerCellContent ? "mt-0.5" : "mt-auto")}>
           <span className="block text-xs font-semibold tabular-nums">
             {formatHours(summary!.totalMinutes, false)}
           </span>
           <span className="block text-[10px] text-muted-foreground sm:text-xs">
-            {summary!.entryCount} {summary!.entryCount === 1 ? "entry" : "entries"}
+            {summary!.entryCount} {isMobile ? "en." : summary!.entryCount === 1 ? "entry" : "entries"}
           </span>
         </div>
       )}
 
       {!compact && inMonth && !hasEntries && (
-        <span className="mt-auto text-[10px] text-muted-foreground sm:text-xs">
+        <span
+          className={cn(
+            "text-[10px] text-muted-foreground sm:text-xs",
+            centerCellContent ? "mt-0.5" : "mt-auto",
+          )}
+        >
           {status === "off" ? "Off" : "—"}
         </span>
       )}
 
       {compact && inMonth && hasEntries && (
-        <span
-          className={cn(
-            "text-[9px] font-semibold tabular-nums leading-none text-foreground/75",
-            isMarkedDayOff && "mt-0.5",
-          )}
-        >
+        <span className="text-[8px] font-semibold tabular-nums leading-none text-foreground/75">
           {formatHours(summary!.totalMinutes, true)}h
         </span>
       )}
@@ -148,6 +158,16 @@ function DayCell({
         <span className="text-[9px] leading-none text-transparent" aria-hidden>
           ·
         </span>
+      )}
+
+      {hasNote && inMonth && (
+        <span
+          className={cn(
+            "absolute left-1/2 h-0.5 -translate-x-1/2 rounded-full bg-sky-500/90",
+            compact ? "bottom-px w-2.5" : "bottom-[3px] w-3",
+          )}
+          aria-hidden
+        />
       )}
     </>
   );
@@ -198,7 +218,7 @@ export function MonthCalendar({
       <div
         className={cn(
           "grid grid-cols-7 text-center font-medium text-muted-foreground",
-          compact ? "gap-0.5 text-[10px]" : "gap-1 text-xs",
+          compact ? "gap-1 text-[10px]" : "gap-1 text-xs",
         )}
       >
         {weekdayLabels.map((label, index) => (
@@ -214,8 +234,12 @@ export function MonthCalendar({
         ))}
       </div>
 
-      <div className={cn("grid grid-cols-7", compact ? "gap-0.5" : "gap-1")}>
-        {gridDates.map((date) => (
+      <div className="grid grid-cols-7 gap-1">
+        {gridDates.map((date) => {
+          const dayLog = dayLogsByDate?.get(date);
+          const hasNote = Boolean(dayLog?.note?.trim());
+
+          return (
           <DayCell
             key={date}
             date={date}
@@ -226,9 +250,11 @@ export function MonthCalendar({
             isSelected={date === selectedDate}
             compact={compact}
             onDateSelect={onDateSelect}
-            dayOffOverride={dayLogsByDate?.get(date)?.isDayOff ?? null}
+            dayOffOverride={dayLog?.isDayOff ?? null}
+            hasNote={hasNote}
           />
-        ))}
+          );
+        })}
       </div>
 
       {legendVisible && (
@@ -268,7 +294,8 @@ export function MonthCalendar({
           <span className="inline-flex items-center gap-1.5">
             <span
               className={cn(
-                "rounded-sm border border-transparent bg-muted/10",
+                "rounded-sm border border-border/50 bg-muted/10",
+                DAY_OFF_HATCH,
                 compact ? "h-2.5 w-2.5" : "h-3 w-3",
               )}
             />
@@ -277,13 +304,23 @@ export function MonthCalendar({
           <span className="inline-flex items-center gap-1.5">
             <span
               className={cn(
-                "inline-flex items-center justify-center rounded-sm border border-transparent bg-muted/10 font-medium tabular-nums underline decoration-emerald-500/80 decoration-2 underline-offset-2",
-                compact ? "h-2.5 min-w-2.5 px-0.5 text-[8px] leading-none" : "h-3 min-w-3 px-0.5 text-[10px] leading-none",
+                "rounded-sm border border-emerald-500/50 bg-emerald-500/20",
+                DAY_OFF_HATCH,
+                compact ? "h-2.5 w-2.5" : "h-3 w-3",
+              )}
+            />
+            Day off
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              className={cn(
+                "relative rounded-sm border border-transparent bg-muted/10",
+                compact ? "h-2.5 w-2.5" : "h-3 w-3",
               )}
             >
-              D
+              <span className="absolute bottom-px left-1/2 h-0.5 w-2.5 -translate-x-1/2 rounded-full bg-sky-500/90" />
             </span>
-            Day off
+            Note
           </span>
         </div>
       )}

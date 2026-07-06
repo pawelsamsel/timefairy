@@ -35,8 +35,9 @@ const DialogContent = React.forwardRef<
     fullscreen?: boolean;
     showClose?: boolean;
     elevated?: boolean;
+    preventOutsideClose?: boolean;
   }
->(({ className, children, fullscreen = false, showClose = true, elevated = false, ...props }, ref) => (
+>(({ className, children, fullscreen = false, showClose = true, elevated = false, preventOutsideClose = false, onInteractOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay
       className={cn(
@@ -62,11 +63,21 @@ const DialogContent = React.forwardRef<
         className,
       )}
       {...props}
+      onInteractOutside={(event) => {
+        if (preventOutsideClose) {
+          event.preventDefault();
+        }
+        onInteractOutside?.(event);
+      }}
     >
       {fullscreen ? (
         <div className="flex h-full min-h-0 flex-1 flex-col">{children}</div>
       ) : (
-        <div className="px-4 pt-4 pb-0">{children}</div>
+        <div className="flex max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pt-4 pb-0">
+            {children}
+          </div>
+        </div>
       )}
       {showClose ? (
         <DialogPrimitive.Close
@@ -104,6 +115,7 @@ const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
       "-mx-4 mt-4 px-4 py-3",
       "bg-imperial-blue-50 border-t border-imperial-blue-200",
       "rounded-b-md",
+      "sticky bottom-0 z-10 shrink-0",
       "sm:gap-3 [&_button]:min-w-[5.5rem]",
       className,
     )}

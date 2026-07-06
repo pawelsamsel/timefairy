@@ -1,10 +1,18 @@
-import { ChevronLeft, ChevronRight, Menu } from "lucide-react";
+import { ChevronLeft, ChevronRight, Menu, NotebookPen } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import type { TimeEntryWithRelations } from "@timefairy/shared-types";
-import { addDays, formatMobileDayHeaderLabel, toDateInputValue } from "@/lib/datetime";
+import { addDays, formatDayLabel, formatMobileDayHeaderLabel, toDateInputValue } from "@/lib/datetime";
 import { useMobileShell } from "@/lib/mobile-shell-context";
 import { elapsedSecondsFromStart, formatElapsedDuration } from "@/lib/tracking-time";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { DayLogPanel } from "@/components/day/day-log-panel";
+import {
+  MOBILE_SHELL_HEADER_BAR_CLASS,
+  MOBILE_SHELL_HEADER_ICON_BUTTON_CLASS,
+  MOBILE_SHELL_HEADER_ICON_CLASS,
+} from "@/components/layout/mobile-page-header";
 import { useEffect, useState } from "react";
 
 type MobileDayHeaderProps = {
@@ -12,6 +20,8 @@ type MobileDayHeaderProps = {
   totalMinutes: number;
   dailyWorkHours: number;
   onSelectDate: (date: string) => void;
+  dayLogPanelVisible: boolean;
+  onDayLogPanelVisibleChange: (visible: boolean) => void;
 };
 
 export function MobileDayHeader({
@@ -19,73 +29,101 @@ export function MobileDayHeader({
   totalMinutes,
   dailyWorkHours,
   onSelectDate,
+  dayLogPanelVisible,
+  onDayLogPanelVisibleChange,
 }: MobileDayHeaderProps) {
   const { openMenu } = useMobileShell();
   const today = toDateInputValue(new Date());
   const isTodaySelected = selectedDate === today;
 
-  return (
-    <div className="relative shrink-0 border-b border-border/40 pb-3">
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="absolute left-0 top-1/2 z-10 h-10 w-10 -translate-y-1/2"
-        onClick={openMenu}
-        aria-label="Open menu"
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
+  const dayLogQuery = useQuery({
+    queryKey: ["day-log", selectedDate],
+    queryFn: () => api.getDayLog(selectedDate),
+  });
+  const hasNote = Boolean(dayLogQuery.data?.note?.trim());
 
-      <div className="flex items-center justify-center">
-        <div className="inline-flex items-center">
+  return (
+    <>
+      <div className="relative shrink-0 bg-white">
+        <div className={cn(MOBILE_SHELL_HEADER_BAR_CLASS)}>
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-10 w-10 shrink-0"
-            onClick={() => onSelectDate(addDays(selectedDate, -1))}
-            aria-label="Previous day"
+            className={MOBILE_SHELL_HEADER_ICON_BUTTON_CLASS}
+            onClick={openMenu}
+            aria-label="Open menu"
           >
-            <ChevronLeft className="h-5 w-5" />
+            <Menu className={MOBILE_SHELL_HEADER_ICON_CLASS} />
           </Button>
 
-          <button
-            type="button"
-            className="min-w-0 px-1 text-center"
-            onClick={() => {
-              if (!isTodaySelected) onSelectDate(today);
-            }}
-            aria-label={isTodaySelected ? formatMobileDayHeaderLabel(selectedDate) : "Go to today"}
-          >
-            <div className="truncate text-base font-semibold leading-tight tracking-tight">
-              {formatMobileDayHeaderLabel(selectedDate)}
-            </div>
-            <div
-              className={cn(
-                "mx-auto mt-1.5 inline-flex rounded-full border px-3 py-0.5 text-sm tabular-nums",
-                isTodaySelected
-                  ? "border-school-bus-yellow/50 bg-school-bus-yellow/15 text-foreground"
-                  : "border-border/60 bg-muted/40 text-muted-foreground",
-              )}
+          <div className="flex min-w-0 items-center">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={MOBILE_SHELL_HEADER_ICON_BUTTON_CLASS}
+              onClick={() => onSelectDate(addDays(selectedDate, -1))}
+              aria-label="Previous day"
             >
-              {(totalMinutes / 60).toFixed(1)}h / {dailyWorkHours}h
-            </div>
-          </button>
+              <ChevronLeft className={MOBILE_SHELL_HEADER_ICON_CLASS} />
+            </Button>
+
+            <button
+              type="button"
+              className="min-w-0 flex-1 px-0.5 text-center"
+              onClick={() => {
+                if (!isTodaySelected) onSelectDate(today);
+              }}
+              aria-label={isTodaySelected ? formatDayLabel(selectedDate) : "Go to today"}
+            >
+              <div className="truncate text-base font-semibold leading-none tracking-tight">
+                {formatMobileDayHeaderLabel(selectedDate)}
+              </div>
+              <div
+                className={cn(
+                  "mx-auto mt-1 inline-flex rounded-full border px-2 py-px text-[11px] leading-none tabular-nums",
+                  isTodaySelected
+                    ? "border-school-bus-yellow/50 bg-school-bus-yellow/15 text-foreground"
+                    : "border-border/60 bg-muted/40 text-muted-foreground",
+                )}
+              >
+                {(totalMinutes / 60).toFixed(1)}h / {dailyWorkHours}h
+              </div>
+            </button>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className={MOBILE_SHELL_HEADER_ICON_BUTTON_CLASS}
+              onClick={() => onSelectDate(addDays(selectedDate, 1))}
+              aria-label="Next day"
+            >
+              <ChevronRight className={MOBILE_SHELL_HEADER_ICON_CLASS} />
+            </Button>
+          </div>
 
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className="h-10 w-10 shrink-0"
-            onClick={() => onSelectDate(addDays(selectedDate, 1))}
-            aria-label="Next day"
+            className={cn(
+              MOBILE_SHELL_HEADER_ICON_BUTTON_CLASS,
+              hasNote ? "text-primary" : "text-slate-400",
+            )}
+            onClick={() => onDayLogPanelVisibleChange(!dayLogPanelVisible)}
+            aria-pressed={dayLogPanelVisible}
+            aria-label={dayLogPanelVisible ? "Hide day note" : "Show day note"}
+            aria-expanded={dayLogPanelVisible}
           >
-            <ChevronRight className="h-5 w-5" />
+            <NotebookPen className={MOBILE_SHELL_HEADER_ICON_CLASS} />
           </Button>
         </div>
       </div>
-    </div>
+
+      {dayLogPanelVisible && <DayLogPanel selectedDate={selectedDate} />}
+    </>
   );
 }
 
@@ -95,32 +133,36 @@ type MobileDayTabBarProps = {
 };
 
 export function MobileDayTabBar({ activeTab, onTabChange }: MobileDayTabBarProps) {
+  const tabs = [
+    { id: "timeline" as const, label: "Timeline" },
+    { id: "tasks" as const, label: "Tasks" },
+  ];
+
   return (
-    <div className="flex shrink-0 gap-1 rounded-lg border bg-muted/40 p-1">
-      <button
-        type="button"
-        className={cn(
-          "flex-1 rounded-md py-2 text-sm font-medium transition-colors",
-          activeTab === "tasks"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground",
-        )}
-        onClick={() => onTabChange("tasks")}
-      >
-        Tasks
-      </button>
-      <button
-        type="button"
-        className={cn(
-          "flex-1 rounded-md py-2 text-sm font-medium transition-colors",
-          activeTab === "timeline"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground",
-        )}
-        onClick={() => onTabChange("timeline")}
-      >
-        Timeline
-      </button>
+    <div className="flex shrink-0 border-b border-steel-azure bg-white">
+      {tabs.map((tab) => {
+        const isActive = activeTab === tab.id;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            className={cn(
+              "relative flex-1 py-3 text-sm font-medium transition-colors",
+              isActive ? "text-foreground" : "text-slate-400",
+            )}
+            onClick={() => onTabChange(tab.id)}
+            aria-pressed={isActive}
+          >
+            {tab.label}
+            {isActive ? (
+              <span
+                className="absolute inset-x-0 -bottom-px h-1 rounded-full bg-imperial-blue"
+                aria-hidden
+              />
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }

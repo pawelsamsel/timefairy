@@ -3,39 +3,39 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
-export type MobileFabConfig = {
-  onClick: () => void;
-  ariaLabel?: string;
-};
-
 type MobileShellContextValue = {
-  fab: MobileFabConfig | null;
-  setFab: (fab: MobileFabConfig | null) => void;
   menuOpen: boolean;
   openMenu: () => void;
   closeMenu: () => void;
+  openAddLog: () => void;
+  registerOpenAddLog: (handler: (() => void) | null) => void;
 };
 
 const MobileShellContext = createContext<MobileShellContextValue | null>(null);
 
 export function MobileShellProvider({ children }: { children: ReactNode }) {
-  const [fab, setFabState] = useState<MobileFabConfig | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-
-  const setFab = useCallback((next: MobileFabConfig | null) => {
-    setFabState(next);
-  }, []);
+  const openAddLogRef = useRef<(() => void) | null>(null);
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
+  const registerOpenAddLog = useCallback((handler: (() => void) | null) => {
+    openAddLogRef.current = handler;
+  }, []);
+
+  const openAddLog = useCallback(() => {
+    openAddLogRef.current?.();
+  }, []);
+
   const value = useMemo(
-    () => ({ fab, setFab, menuOpen, openMenu, closeMenu }),
-    [closeMenu, fab, menuOpen, openMenu, setFab],
+    () => ({ menuOpen, openMenu, closeMenu, openAddLog, registerOpenAddLog }),
+    [closeMenu, menuOpen, openAddLog, openMenu, registerOpenAddLog],
   );
 
   return <MobileShellContext.Provider value={value}>{children}</MobileShellContext.Provider>;

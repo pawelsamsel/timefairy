@@ -10,7 +10,7 @@ export function MobileMenuButton() {
       type="button"
       variant="ghost"
       size="icon"
-      className="fixed left-3 top-3 z-30 h-10 w-10 md:hidden"
+      className="fixed z-30 h-10 w-10 md:hidden left-[max(0.75rem,env(safe-area-inset-left))] top-[max(0.75rem,env(safe-area-inset-top))]"
       onClick={openMenu}
       aria-label="Open menu"
     >

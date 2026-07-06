@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useMemo, useRef, useState, type Ref } from "reac
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpDown, Filter, GripVertical, Pencil, Pin, Play, Square } from "lucide-react";
 import { TaskStatus, type TaskWithRelations } from "@timefairy/shared-types";
+import { usePinnedProjects } from "@/hooks/use-pinned-projects";
 import { api } from "@/lib/api";
 import { taskProjectAccentColor } from "@/lib/project-colors";
 import { cn } from "@/lib/utils";
@@ -67,6 +68,8 @@ export function DayTaskPanel({
     queryKey: ["projects"],
     queryFn: () => api.listProjects(),
   });
+  const { sortProjects } = usePinnedProjects();
+  const sortedProjects = useMemo(() => sortProjects(projects), [projects, sortProjects]);
 
   const { data: tasks = [], isLoading } = useQuery({
     queryKey: ["tasks"],
@@ -255,7 +258,7 @@ export function DayTaskPanel({
                 {projects.length === 0 && (
                   <p className="px-0.5 text-xs text-muted-foreground">No projects</p>
                 )}
-                {projects.map((project) => (
+                {sortedProjects.map((project) => (
                   <label key={project.id} className="flex cursor-pointer items-center gap-2">
                     <Checkbox
                       checked={selectedProjectIds.has(project.id)}

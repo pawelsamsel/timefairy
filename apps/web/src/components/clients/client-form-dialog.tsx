@@ -132,7 +132,7 @@ export function ClientFormDialog({ open, onOpenChange, clientId }: Props) {
               : "Add a client for billing and projects."}
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        <form onSubmit={onSubmit} className="space-y-4">
           {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="space-y-2">
             <Label htmlFor="client-name">Name</Label>

@@ -31,6 +31,7 @@ export const exportProjectSchema = z.object({
   color: z.string().optional(),
   hourlyRate: z.string(),
   currency: z.string(),
+  isBillable: z.boolean().optional(),
   note: z.string().nullable(),
   createdAt: isoDate,
   updatedAt: isoDate,

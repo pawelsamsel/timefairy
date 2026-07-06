@@ -44,9 +44,9 @@ export function formatMobileDayHeaderLabel(dateStr: string): string {
   const [y, m, d] = dateStr.split("-").map(Number);
   const date = new Date(y, m - 1, d);
   return date.toLocaleDateString(undefined, {
-    weekday: "long",
+    weekday: "short",
     day: "numeric",
-    month: "long",
+    month: "short",
   });
 }
 

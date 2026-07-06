@@ -1,12 +1,14 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Pin, Plus, Trash2 } from "lucide-react";
 import type { Project } from "@timefairy/shared-types";
 import { api } from "@/lib/api";
 import { getErrorMessage } from "@/lib/errors";
 import { useAppDialog } from "@/lib/app-dialog";
 import { useClientListView } from "@/hooks/use-client-list-view";
+import { usePinnedProjects } from "@/hooks/use-pinned-projects";
 import { matchesListSearch } from "@/lib/list-view";
+import { prunePinnedProjectIds, loadPinnedProjectIds, savePinnedProjectIds } from "@/lib/pinned-projects";
 import { ProjectFormDialog } from "@/components/projects/project-form-dialog";
 import { ListPagination } from "@/components/list/list-pagination";
 import { ListSearchField } from "@/components/list/list-search-field";
@@ -33,12 +35,16 @@ type ProjectRow = Project & {
 function ProjectTableRow({
   project,
   hideClient,
+  pinned,
+  onTogglePin,
   onEdit,
   onDelete,
   deletePending,
 }: {
   project: ProjectRow;
   hideClient?: boolean;
+  pinned: boolean;
+  onTogglePin: (projectId: string) => void;
   onEdit: (id: string) => void;
   onDelete: (project: { id: string; name: string }) => void;
   deletePending: boolean;
@@ -60,6 +66,9 @@ function ProjectTableRow({
       <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
         {project.hourlyRate} {project.currency}/h
       </td>
+      <td className="px-4 py-3 text-muted-foreground">
+        {project.isBillable ? "Yes" : "No"}
+      </td>
       <td className="px-4 py-3 text-right text-muted-foreground">
         {project._count?.tasks ?? 0}
       </td>
@@ -68,6 +77,18 @@ function ProjectTableRow({
       </td>
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className={cn(pinned && "text-primary hover:text-primary")}
+            onClick={() => onTogglePin(project.id)}
+            aria-label={pinned ? `Unpin ${project.name}` : `Pin ${project.name}`}
+            aria-pressed={pinned}
+            title={pinned ? "Unpin from project pickers" : "Pin to top of project pickers"}
+          >
+            <Pin className={cn("h-4 w-4", pinned && "fill-current")} />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -95,6 +116,7 @@ function ProjectTableRow({
 export function ProjectsPage() {
   const qc = useQueryClient();
   const { confirm, alert } = useAppDialog();
+  const { isPinned, togglePin, sortProjects, pinnedIds } = usePinnedProjects();
   const [clientFilter, setClientFilter] = useState(ALL_CLIENTS);
   const [viewMode, setViewMode] = useState(VIEW_FLAT);
 
@@ -115,10 +137,10 @@ export function ProjectsPage() {
   const selectedClientId = clientFilter === ALL_CLIENTS ? undefined : clientFilter;
 
   const visibleProjects = useMemo(() => {
-    const sorted = [...projects].sort((a, b) => a.name.localeCompare(b.name));
+    const sorted = sortProjects(projects);
     if (!selectedClientId) return sorted;
     return sorted.filter((p) => p.clientId === selectedClientId);
-  }, [projects, selectedClientId]);
+  }, [projects, selectedClientId, sortProjects]);
 
   const projectSearchMatcher = useCallback(
     (project: ProjectRow, query: string) => {
@@ -132,6 +154,7 @@ export function ProjectsPage() {
         clientName,
         project.currency,
         String(project.hourlyRate),
+        project.isBillable ? "billable" : "non-billable",
         project.note,
       );
     },
@@ -162,14 +185,32 @@ export function ProjectsPage() {
       }
     }
 
-    return [...groups.values()].sort((a, b) => a.clientName.localeCompare(b.clientName));
-  }, [listView.filteredItems, clients]);
+    return [...groups.values()]
+      .sort((a, b) => a.clientName.localeCompare(b.clientName))
+      .map((group) => ({
+        ...group,
+        projects: sortProjects(group.projects),
+      }));
+  }, [listView.filteredItems, clients, sortProjects]);
 
   useEffect(() => {
     if (isGrouped && listView.search.trim()) {
       setCollapsedGroups(new Set());
     }
   }, [isGrouped, listView.search]);
+
+  useEffect(() => {
+    if (projects.length === 0) return;
+    const current = loadPinnedProjectIds();
+    const pruned = prunePinnedProjectIds(current, projects);
+    if (current.length === pruned.length && current.every((id, index) => id === pruned[index])) return;
+    savePinnedProjectIds(pruned);
+  }, [projects]);
+
+  useEffect(() => {
+    if (!listView.paginate) return;
+    listView.setPage(1);
+  }, [pinnedIds, listView.paginate, listView.setPage]);
 
   const deleteProject = useMutation({
     mutationFn: (id: string) => api.deleteProject(id),
@@ -222,7 +263,7 @@ export function ProjectsPage() {
     setCollapsedGroups(new Set(groupedProjects.map((g) => g.clientId)));
   }
 
-  const colSpan = isGrouped ? 5 : 6;
+  const colSpan = isGrouped ? 6 : 7;
   const hasClientFilter = selectedClientId != null;
   const emptyMessage =
     projects.length === 0
@@ -237,7 +278,7 @@ export function ProjectsPage() {
     <div className="space-y-6 w-full">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Projects</h1>
+          <h1 className="hidden text-xl font-semibold tracking-tight md:block">Projects</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Manage projects, hourly rates, and client assignment.
           </p>
@@ -306,6 +347,7 @@ export function ProjectsPage() {
                 <th className="text-left font-medium px-4 py-3">Project</th>
                 {!isGrouped && <th className="text-left font-medium px-4 py-3">Client</th>}
                 <th className="text-left font-medium px-4 py-3">Rate</th>
+                <th className="text-left font-medium px-4 py-3">Billable</th>
                 <th className="text-right font-medium px-4 py-3">Tasks</th>
                 <th className="text-right font-medium px-4 py-3">Entries</th>
                 <th className="text-right font-medium px-4 py-3 w-28">Actions</th>
@@ -332,6 +374,8 @@ export function ProjectsPage() {
                   <ProjectTableRow
                     key={p.id}
                     project={p}
+                    pinned={isPinned(p.id)}
+                    onTogglePin={togglePin}
                     onEdit={openEdit}
                     onDelete={handleDeleteProject}
                     deletePending={deleteProject.isPending}
@@ -370,6 +414,8 @@ export function ProjectsPage() {
                             key={p.id}
                             project={p}
                             hideClient
+                            pinned={isPinned(p.id)}
+                            onTogglePin={togglePin}
                             onEdit={openEdit}
                             onDelete={handleDeleteProject}
                             deletePending={deleteProject.isPending}

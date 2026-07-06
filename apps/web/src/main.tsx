@@ -9,7 +9,15 @@ import { ThemeProvider } from "./components/theme-provider";
 import { App } from "./App";
 import "./index.css";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 0,
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    },
+  },
+});
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
